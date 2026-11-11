@@ -1,0 +1,17 @@
+{
+  "name": "eselsbruecke-desktop-build",
+  "private": true,
+  "description": "Builds plugins/eselsbruecke/desktop/plugin.js and data/o200k_base.json. Never installed at the plugin root (R11).",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "node build.mjs --check-only"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "js-tiktoken": "1.0.21",
+    "prettier": "3.9.10",
+    "qrcode-generator": "2.0.4"
+  }
+}

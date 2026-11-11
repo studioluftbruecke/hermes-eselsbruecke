@@ -1,0 +1,12 @@
+{
+  "name": "eselsbruecke",
+  "label": "Eselsbrücke",
+  "description": "Backend routes for the Eselsbrücke toolbox page: toolbox file, pad, timers, time log, engines",
+  "icon": "Wrench",
+  "version": "0.1.0",
+  "tab": {
+    "path": "/eselsbruecke",
+    "hidden": true
+  },
+  "api": "plugin_api.py"
+}

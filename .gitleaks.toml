@@ -1,0 +1,12 @@
+# Read by gitleaks when it scans this plugin folder (the pre-publish gate runs `gitleaks dir`).
+# Default rules, plus one path: data/o200k_base.json is OpenAI's public o200k tokenizer vocabulary
+# (base64-encoded tokens, written by desktop/build/build.mjs from js-tiktoken 1.0.21). Some tokens look
+# like keys to the generic-api-key rule; they are words. Nothing else in the plugin is exempt.
+title = "eselsbruecke"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "the public o200k tokenizer vocabulary, generated data"
+paths = ['''(^|/)data/o200k_base\.json$''']

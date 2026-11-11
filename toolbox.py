@@ -1,0 +1,399 @@
+"""The toolbox file: which tools are on, their order and options, presets and saved versions.
+
+`toolbox.json` in the data folder is the one file the settings page, the Toolbox page's edit mode and
+the agent's `eselsbruecke_toolbox` all edit. Every save keeps a version in `toolbox.versions/<n>.json`
+with author (`user` or `agent`), time and a one-line summary; the last 20 stay, and restoring one is
+a new save. Agent edits go through `preview` (a diff and an id) and `apply(id)`, which refuses when
+the file changed since the preview.
+
+Shape (schema 1):
+    {"schema": 1, "preset": "everything", "first_run": false,
+     "modules": {<id>: {"on": bool, "order": int, "options": {}}},
+     "layout": {"rail": "groups"|"flat", "dock": <id>|null, "chip": "auto"|"pomodoro"|"timelog"|"off"},
+     "pomodoro": {"rhythm": "25/5"|"50/10"|"custom", "work": 25, "short": 5, "long": 15, "cycles": 4},
+     "tips": [{"id", "title", "why"}],
+     "alerts": {"while_closed": false}}
+"""
+from __future__ import annotations
+
+import copy
+import hashlib
+import json
+import shutil
+from pathlib import Path
+from typing import Any, Callable, Optional
+
+from . import clock
+from .registry import MODULE_BY_ID, MODULE_IDS, MODULES
+from .store import Store, StoreError
+
+SCHEMA = 1
+FILE = "toolbox.json"
+VERSIONS = "toolbox.versions"
+PREVIEW = "toolbox.preview.json"
+KEEP_VERSIONS = 20
+RHYTHMS = ("25/5", "50/10", "custom")
+CHIPS = ("auto", "pomodoro", "timelog", "off")
+RAILS = ("groups", "flat")
+MAX_TIPS = 50
+
+
+def _load_presets() -> dict[str, dict]:
+    """Loaded once at import, with the code (pitfall: data files read per call skew from the code)."""
+    out = {}
+    for path in sorted((Path(__file__).resolve().parent / "presets").glob("*.json")):
+        row = json.loads(path.read_text(encoding="utf-8"))
+        out[row["name"]] = row
+    return out
+
+
+PRESETS = _load_presets()
+PRESET_ORDER = ("everything", "focus", "developer", "designer")
+
+# Called after every save with (old_doc, new_doc); M4's alert reconcile registers here.
+AFTER_SAVE: list[Callable[[Store, dict, dict], None]] = []
+
+
+class ToolboxError(Exception):
+    def __init__(self, code: str, message: str, **extra: Any):
+        super().__init__(message)
+        self.code = code
+        self.extra = extra
+
+
+class SwitchedOff(ToolboxError):
+    def __init__(self, module: str):
+        title = MODULE_BY_ID.get(module, {}).get("title", module)
+        super().__init__("switched_off", f"{title} is switched off in the toolbox. Ask the user to switch it on "
+                                         f"(Toolbox page, Edit, or eselsbruecke_toolbox set_switch).",
+                         module=module)
+
+
+def default_doc(preset: str = "everything", first_run: bool = True) -> dict:
+    on = set(PRESETS[preset]["on"])
+    return {
+        "schema": SCHEMA,
+        "preset": preset,
+        "first_run": first_run,
+        "modules": {m["id"]: {"on": m["id"] in on, "order": i, "options": {}} for i, m in enumerate(MODULES)},
+        "layout": {"rail": "groups", "dock": None, "chip": "auto"},
+        "pomodoro": {"rhythm": "25/5", "work": 25, "short": 5, "long": 15, "cycles": 4},
+        "tips": [],
+        "alerts": {"while_closed": False},
+    }
+
+
+def _merge(base: Any, patch: Any) -> Any:
+    if isinstance(base, dict) and isinstance(patch, dict):
+        out = dict(base)
+        for k, v in patch.items():
+            out[k] = _merge(base.get(k), v) if k in base else copy.deepcopy(v)
+        return out
+    return copy.deepcopy(patch)
+
+
+def validate(doc: Any) -> tuple[dict, list[str]]:
+    """A clean copy of `doc` filled from the defaults, and the list of problems (empty = valid)."""
+    errors: list[str] = []
+    if not isinstance(doc, dict):
+        return default_doc(), ["the toolbox must be an object"]
+    known = set(default_doc())
+    for key in doc:
+        if key not in known:
+            errors.append(f"unknown key {key!r} (known: {', '.join(sorted(known))})")
+    defaults = default_doc(first_run=False)
+    clean = _merge(defaults, {k: v for k, v in doc.items() if k in known})
+    for key in ("layout", "pomodoro", "alerts"):  # a wrong shape is a problem to report, never a crash
+        if not isinstance(clean.get(key), dict):
+            errors.append(f"{key} must be an object")
+            clean[key] = defaults[key]
+    if clean.get("schema") != SCHEMA:
+        errors.append(f"schema must be {SCHEMA}")
+    if not isinstance(clean.get("preset"), str) or (clean["preset"] not in PRESETS and clean["preset"] != "custom"):
+        errors.append(f"preset must be one of {', '.join(PRESET_ORDER)} or custom")
+    if not isinstance(clean.get("first_run"), bool):
+        errors.append("first_run must be true or false")
+    mods = clean.get("modules")
+    if not isinstance(mods, dict):
+        errors.append("modules must be an object")
+    else:
+        for mid in list(mods):
+            if mid not in MODULE_BY_ID:
+                errors.append(f"unknown tool {mid!r} (tools: {', '.join(MODULE_IDS)})")
+                continue
+            row = mods[mid]
+            if not isinstance(row, dict):
+                errors.append(f"modules.{mid} must be an object")
+                continue
+            if not isinstance(row.get("on"), bool):
+                errors.append(f"modules.{mid}.on must be true or false")
+            if not isinstance(row.get("order"), int) or isinstance(row.get("order"), bool):
+                errors.append(f"modules.{mid}.order must be a whole number")
+            opts = row.get("options", {})
+            if not isinstance(opts, dict) or len(json.dumps(opts)) > 4000:
+                errors.append(f"modules.{mid}.options must be an object under 4000 characters")
+            for extra in set(row) - {"on", "order", "options"}:
+                errors.append(f"modules.{mid}: unknown key {extra!r}")
+    layout = clean.get("layout") or {}
+    if layout.get("rail") not in RAILS:
+        errors.append(f"layout.rail must be one of {', '.join(RAILS)}")
+    if layout.get("chip") not in CHIPS:
+        errors.append(f"layout.chip must be one of {', '.join(CHIPS)}")
+    if layout.get("dock") is not None and (not isinstance(layout["dock"], str) or layout["dock"] not in MODULE_BY_ID):
+        errors.append("layout.dock must be a tool id or null")
+    for extra in set(layout) - {"rail", "dock", "chip"}:
+        errors.append(f"layout: unknown key {extra!r}")
+    pomo = clean.get("pomodoro") or {}
+    if pomo.get("rhythm") not in RHYTHMS:
+        errors.append(f"pomodoro.rhythm must be one of {', '.join(RHYTHMS)}")
+    for key, lo, hi in (("work", 1, 240), ("short", 1, 60), ("long", 1, 120), ("cycles", 1, 12)):
+        v = pomo.get(key)
+        if not isinstance(v, int) or isinstance(v, bool) or not lo <= v <= hi:
+            errors.append(f"pomodoro.{key} must be a whole number from {lo} to {hi}")
+    tips = clean.get("tips")
+    if not isinstance(tips, list) or len(tips) > MAX_TIPS:
+        errors.append(f"tips must be a list of at most {MAX_TIPS}")
+    else:
+        for i, tip in enumerate(tips):
+            if not isinstance(tip, dict) or not isinstance(tip.get("title"), str) or not tip["title"].strip():
+                errors.append(f"tips[{i}] needs a title")
+                continue
+            if len(tip["title"]) > 120 or len(str(tip.get("why", ""))) > 400:
+                errors.append(f"tips[{i}]: title up to 120 and why up to 400 characters")
+            tip.setdefault("id", "user-" + hashlib.sha256(tip["title"].encode()).hexdigest()[:8])
+            tip.setdefault("why", "")
+    alerts = clean.get("alerts") or {}
+    if not isinstance(alerts.get("while_closed"), bool):
+        errors.append("alerts.while_closed must be true or false")
+    return clean, errors
+
+
+def doc_hash(doc: dict) -> str:
+    return hashlib.sha256(json.dumps(doc, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:16]
+
+
+def load_state(store: Store) -> tuple[dict, Optional[dict]]:
+    """The toolbox in effect, and what is wrong with toolbox.json when it cannot be used.
+
+    No file: the defaults (first run). A file that is not JSON or not a valid toolbox (people edit it by
+    hand): the newest valid saved version, else the defaults, plus a problem {reason, file, using,
+    message}. Reading never writes; the next save keeps the broken file beside the new one."""
+    try:
+        raw = store.read_json(FILE)
+    except StoreError as exc:
+        reason = str(exc)
+    else:
+        if raw is None:
+            return default_doc(), None
+        clean, errors = validate(raw)
+        if not errors:
+            return clean, None
+        reason = "; ".join(errors[:8])
+    doc, using = _fallback(store)
+    path = str(store.path(FILE))
+    return doc, {"reason": reason, "file": path, "using": using,
+                 "message": f"{path} is not a valid toolbox ({reason}). Eselsbrücke uses {using} until the file "
+                            "is fixed or a change is saved; a save keeps the broken file beside the new one."}
+
+
+def _fallback(store: Store) -> tuple[dict, str]:
+    for n in reversed(_version_numbers(store)):
+        try:
+            row = store.read_json(VERSIONS, f"{n}.json")
+        except StoreError:
+            continue
+        if isinstance(row, dict):
+            clean, errors = validate(row.get("doc"))
+            if not errors:
+                return clean, f"version {n}"
+    return default_doc(first_run=False), "defaults"
+
+
+def load(store: Store) -> dict:
+    """The toolbox in effect (see load_state)."""
+    return load_state(store)[0]
+
+
+def is_on(store: Store, module: str) -> bool:
+    row = load(store)["modules"].get(module)
+    return bool(row and row.get("on"))
+
+
+def require_on(store: Store, module: Optional[str]) -> None:
+    if module is not None and not is_on(store, module):
+        raise SwitchedOff(module)
+
+
+def describe_changes(old: dict, new: dict) -> list[str]:
+    lines: list[str] = []
+    for m in MODULES:
+        mid = m["id"]
+        a, b = old["modules"].get(mid, {}), new["modules"].get(mid, {})
+        if a.get("on") != b.get("on"):
+            lines.append(f"{m['title']} {'on' if b.get('on') else 'off'}")
+        if a.get("options") != b.get("options"):
+            lines.append(f"{m['title']} options changed")
+    order_a = sorted(old["modules"], key=lambda k: old["modules"][k]["order"])
+    order_b = sorted(new["modules"], key=lambda k: new["modules"][k]["order"])
+    if order_a != order_b:
+        lines.append("Order: " + ", ".join(MODULE_BY_ID[k]["title"] for k in order_b if new["modules"][k]["on"]))
+    if old.get("preset") != new.get("preset"):
+        lines.append(f"Preset {new.get('preset')}")
+    for key in ("layout", "pomodoro", "alerts"):
+        for sub in sorted(set(old.get(key, {})) | set(new.get(key, {}))):
+            if old.get(key, {}).get(sub) != new.get(key, {}).get(sub):
+                lines.append(f"{key}.{sub}: {old.get(key, {}).get(sub)} -> {new.get(key, {}).get(sub)}")
+    old_tips = {t.get("id"): t for t in old.get("tips", [])}
+    new_tips = {t.get("id"): t for t in new.get("tips", [])}
+    for tid in new_tips.keys() - old_tips.keys():
+        lines.append(f"Tip added: {new_tips[tid]['title']}")
+    for tid in old_tips.keys() - new_tips.keys():
+        lines.append(f"Tip removed: {old_tips[tid]['title']}")
+    if old.get("first_run") and not new.get("first_run") and not lines:
+        lines.append("First run done")
+    return lines
+
+
+def _version_numbers(store: Store) -> list[int]:
+    nums = []
+    for name in store.listdir(VERSIONS):
+        stem = name[:-5] if name.endswith(".json") else ""
+        if stem.isdigit():
+            nums.append(int(stem))
+    return sorted(nums)
+
+
+def save(store: Store, doc: dict, author: str, summary: Optional[str] = None) -> dict:
+    """Validate and write the toolbox, keep a version, prune old ones, run AFTER_SAVE.
+
+    Returns {"version", "summary", "changes", "toolbox"}. Raises ToolboxError("invalid", ...)."""
+    if author not in ("user", "agent"):
+        raise ToolboxError("invalid", "author must be user or agent")
+    clean, errors = validate(doc)
+    if errors:
+        raise ToolboxError("invalid", "The toolbox was not saved: " + "; ".join(errors[:8]), errors=errors)
+    with store.lock():
+        old, problem = load_state(store)
+        changes = describe_changes(old, clean)
+        text = summary or (", ".join(changes) if changes else "No change")
+        kept = _keep_broken(store) if problem else None
+        store.write_json(FILE, clean)
+        nums = _version_numbers(store)
+        n = (nums[-1] + 1) if nums else 1
+        store.write_json((VERSIONS, f"{n}.json"), {"n": n, "author": author, "time": clock.iso(),
+                                                   "summary": text[:200], "doc": clean})
+        for old_n in nums[: max(0, len(nums) + 1 - KEEP_VERSIONS)]:
+            store.remove(VERSIONS, f"{old_n}.json")
+    for hook in list(AFTER_SAVE):
+        try:
+            hook(store, old, clean)
+        except Exception:  # a hook (alert reconcile) never undoes a save; it reports elsewhere
+            pass
+    out = {"version": n, "summary": text, "changes": changes, "toolbox": clean}
+    if kept:
+        out["kept_broken"] = kept
+    return out
+
+
+def _keep_broken(store: Store) -> Optional[str]:
+    """Copy an unusable toolbox.json aside before a save replaces it; returns the copy's name."""
+    src = store.path(FILE)
+    if not src.exists():
+        return None
+    name = f"toolbox.broken-{clock.now().strftime('%Y%m%dT%H%M%S')}.json"
+    shutil.copy2(src, store.path(name))
+    return name
+
+
+def set_switch(store: Store, module: str, on: bool, author: str) -> dict:
+    if module not in MODULE_BY_ID:
+        raise ToolboxError("unknown_tool", f"Unknown tool {module!r}. Tools: {', '.join(MODULE_IDS)}")
+    if not isinstance(on, bool):
+        raise ToolboxError("invalid", "on must be true or false")
+    with store.lock():
+        doc = load(store)
+        doc["modules"][module]["on"] = on
+        doc["first_run"] = False
+        if doc.get("preset") != "custom" and set(PRESETS.get(doc["preset"], {}).get("on", [])) != {
+                k for k, v in doc["modules"].items() if v["on"]}:
+            doc["preset"] = "custom"
+        return save(store, doc, author, f"{MODULE_BY_ID[module]['title']} {'on' if on else 'off'}")
+
+
+def apply_preset(store: Store, name: str, author: str) -> dict:
+    if name not in PRESETS:
+        raise ToolboxError("unknown_preset", f"Unknown preset {name!r}. Presets: {', '.join(PRESET_ORDER)}")
+    with store.lock():
+        doc = load(store)
+        on = set(PRESETS[name]["on"])
+        for mid, row in doc["modules"].items():
+            row["on"] = mid in on
+        doc["preset"] = name
+        doc["first_run"] = False
+        return save(store, doc, author, f"Preset {PRESETS[name]['title']}")
+
+
+def preview(store: Store, patch: dict, author: str) -> dict:
+    """The diff a patch would make, and an id that `apply` takes. Nothing is saved."""
+    if not isinstance(patch, dict) or not patch:
+        raise ToolboxError("invalid", "changes must be a non-empty object, e.g. {\"modules\": {\"qr\": {\"on\": false}}}")
+    with store.lock():
+        current = load(store)
+        merged = _merge(current, patch)
+        merged["first_run"] = False
+        clean, errors = validate(merged)
+        if errors:
+            raise ToolboxError("invalid", "These changes are not valid: " + "; ".join(errors[:8]), errors=errors)
+        changes = describe_changes(current, clean)
+        pid = doc_hash({"base": current, "new": clean})
+        store.write_json(PREVIEW, {"id": pid, "base": doc_hash(current), "doc": clean, "changes": changes,
+                                   "author": author, "at": clock.iso()})
+    return {"preview_id": pid, "changes": changes or ["No change"], "toolbox": clean}
+
+
+def apply(store: Store, preview_id: str, author: str) -> dict:
+    with store.lock():
+        pending = store.read_json(PREVIEW)
+        if not pending or pending.get("id") != preview_id:
+            raise ToolboxError("unknown_preview", "No preview with that id; call preview again.")
+        if pending.get("base") != doc_hash(load(store)):
+            raise ToolboxError("stale_preview", "The toolbox changed since this preview; call preview again.")
+        out = save(store, pending["doc"], author, ", ".join(pending.get("changes") or []) or None)
+        store.remove(PREVIEW)
+        return out
+
+
+def versions(store: Store) -> list[dict]:
+    nums = _version_numbers(store)
+    out = []
+    for n in reversed(nums):
+        row = store.read_json(VERSIONS, f"{n}.json") or {}
+        out.append({"n": n, "author": row.get("author"), "time": row.get("time"), "summary": row.get("summary"),
+                    "current": n == nums[-1]})
+    return out
+
+
+def restore(store: Store, n: int, author: str) -> dict:
+    if not isinstance(n, int) or isinstance(n, bool):
+        raise ToolboxError("invalid", "version must be a whole number")
+    try:
+        row = store.read_json(VERSIONS, f"{n}.json")
+    except StoreError as exc:
+        raise ToolboxError("invalid", f"Saved version {n} cannot be read: {exc}") from exc
+    if not isinstance(row, dict) or "doc" not in row:
+        raise ToolboxError("unknown_version", f"No saved version {n}; the last {KEEP_VERSIONS} are kept.")
+    return save(store, row["doc"], author, f"Restored v{n}")
+
+
+def view(store: Store) -> dict:
+    """What the page and the agent's `list` see: the file, the registry rows with their switch, presets."""
+    doc, problem = load_state(store)
+    tools = []
+    for m in sorted(MODULES, key=lambda r: doc["modules"][r["id"]]["order"]):
+        tools.append({**m, "on": doc["modules"][m["id"]]["on"], "options": doc["modules"][m["id"]]["options"]})
+    return {"schema": SCHEMA, "toolbox": doc, "tools": tools,
+            "presets": [{k: PRESETS[p][k] for k in ("name", "title", "blurb", "on")} for p in PRESET_ORDER],
+            "hash": doc_hash(doc), **({"file_error": problem} if problem else {})}
+
+
+__all__ = ["StoreError"]

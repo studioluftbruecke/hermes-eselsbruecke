@@ -1,0 +1,65 @@
+{
+ "_comment": "Built-in productivity tips shown at pomodoro breaks. Written for Eselsbrücke; MIT like the plugin.",
+ "tips": [
+  {
+   "id": "timebox",
+   "title": "Time-box the next task",
+   "why": "A fixed slot turns 'until it is done' into 'until 11:30', which makes starting easier and stops polishing."
+  },
+  {
+   "id": "frog",
+   "title": "Eat the frog",
+   "why": "Do the task you are avoiding first: the rest of the day no longer carries it."
+  },
+  {
+   "id": "two-minute",
+   "title": "Two-minute rule",
+   "why": "If it takes under two minutes, do it now; writing it down costs about as much."
+  },
+  {
+   "id": "shutdown",
+   "title": "Shutdown ritual",
+   "why": "End the day by writing tomorrow's first step on the pad, so you can stop thinking about work."
+  },
+  {
+   "id": "next-step",
+   "title": "Write the next physical step",
+   "why": "'Fix export' stalls; 'open export.ts and log the payload' starts."
+  },
+  {
+   "id": "single",
+   "title": "One thing per block",
+   "why": "Switching between tasks costs more focus than it feels like; keep one task per pomodoro."
+  },
+  {
+   "id": "away",
+   "title": "Look away from the screen",
+   "why": "Twenty seconds at something twenty feet away rests the eyes better than scrolling."
+  },
+  {
+   "id": "move",
+   "title": "Stand up and move",
+   "why": "A short walk in the break resets attention more than another tab does."
+  },
+  {
+   "id": "water",
+   "title": "Drink some water",
+   "why": "Mild thirst lowers concentration before you notice it."
+  },
+  {
+   "id": "batch",
+   "title": "Batch the shallow work",
+   "why": "Answer messages in one block instead of between deep tasks."
+  },
+  {
+   "id": "done-list",
+   "title": "Note what you finished",
+   "why": "A short done list makes progress visible on days that feel slow."
+  },
+  {
+   "id": "park",
+   "title": "Park stray thoughts",
+   "why": "Write a distracting thought on the pad and return to the task; it will still be there at the break."
+  }
+ ]
+}

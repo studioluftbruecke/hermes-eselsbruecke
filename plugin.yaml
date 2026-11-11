@@ -1,0 +1,34 @@
+name: eselsbruecke
+version: "0.1.0"
+description: "Eselsbrücke: a helper toolbox for Hermes with tools you switch on and off. A today pad for short notes, a pomodoro that runs itself, a billable time log, a formatter, a colour picker and small tools (diff, regex, token count, time zones, encode, UUID, cron, QR). Your agent can use the same tools for exact answers. Local files, no account."
+author: "Studio Luftbrücke"
+license: MIT
+requires_hermes: ">=0.23.0"
+provides_tools:
+  - eselsbruecke_toolbox
+  - eselsbruecke_pad
+  - eselsbruecke_timer
+  - eselsbruecke_timelog
+  - eselsbruecke_calc
+  - eselsbruecke_format
+  - eselsbruecke_convert
+  - eselsbruecke_text
+  - eselsbruecke_generate
+config_schema:
+  agent_timelog_edits:
+    type: string
+    choices: [allow, never]
+    default: allow
+    label: "Agent edits to time-log entries"
+    description: "allow: the agent may edit and delete time-log entries when you ask; each change is recorded with its name and undone in one step. never: the agent may start, stop and add, but not edit or delete."
+  unattended_pad_writes:
+    type: boolean
+    default: false
+    label: "Your automations may add pad lines"
+    description: "Off: scheduled jobs and one-shot runs never touch the pad. On: your own automations may add lines (marked as added by Hermes, with undo)."
+  week_starts:
+    type: string
+    choices: [monday, sunday]
+    default: monday
+    label: "Week starts on"
+    description: "For the time log's weekly totals. The files stay ISO weeks."
