@@ -1,11 +1,12 @@
 // Convert and design tools, all in the Desktop (they answer per keystroke; constraint 8) and all
-// working without the backend: encode/decode, time zones and timestamps, UUIDs and passwords,
-// colour (with WCAG contrast and, where Desktop allows it, a screen picker), QR codes.
-import { useMemo, useState } from 'react'
+// working without the backend: encode/decode, UUIDs and passwords, colour (with WCAG contrast and,
+// where Desktop allows it, a screen picker), QR codes. Time zones live in tools/clock.js.
+import { useEffect, useMemo, useState } from 'react'
 import { jsx } from 'react/jsx-runtime'
 
 import { alertBoth, storage } from '../core.js'
-import { colour, convertTime, convertTimestamp, decode, encode, passphrase, password, uuids } from '../engines.js'
+import { DRAFT, useDraft } from '../drafts.js'
+import { colour, decode, encode, passphrase, password, uuids } from '../engines.js'
 import { qrcode } from '../vendor.js'
 import { Area, Btn, Choice, Copy, Field, h, Input, Out, ToolHead } from '../ui.js'
 
@@ -18,9 +19,9 @@ const attempt = fn => {
 }
 
 export function EncodeTool() {
-  const [text, setText] = useState('')
-  const [scheme, setScheme] = useState('base64')
-  const [dir, setDir] = useState('encode')
+  const [text, setText] = useDraft(DRAFT.encodeText, '')
+  const [scheme, setScheme] = useDraft(DRAFT.encodeScheme, 'base64')
+  const [dir, setDir] = useDraft(DRAFT.encodeDir, 'encode')
   const res = useMemo(() => (text ? attempt(() => (dir === 'encode' ? encode(text, scheme) : decode(text, scheme))) : null), [text, scheme, dir])
   return h('div', { className: 'col' },
     h(ToolHead, { title: 'Encode, decode', blurb: 'Base64, Base64URL and URL encoding, UTF-8 throughout.' }),
@@ -29,38 +30,6 @@ export function EncodeTool() {
       h(Choice, { value: scheme, onChange: setScheme, options: [['base64', 'Base64'], ['base64url', 'Base64URL'], ['url', 'URL']], 'aria-label': 'Scheme' })),
     h(Area, { value: text, onChange: setText, rows: 6, placeholder: dir === 'encode' ? 'Text' : 'Encoded text' }),
     res ? (res.ok ? h('div', { className: 'col' }, h(Out, null, res.value), h('div', { className: 'row' }, h(Copy, { text: res.value }), h(Btn, { onClick: () => { setText(res.value); setDir(dir === 'encode' ? 'decode' : 'encode') } }, 'Swap'))) : h(Out, { err: true }, res.error)) : null)
-}
-
-const DEFAULT_ZONES = ['UTC', 'Europe/Berlin', 'America/New_York', 'Asia/Tokyo']
-
-export function TimezonesTool() {
-  const local = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
-  const [time, setTime] = useState('now')
-  const [from, setFrom] = useState(local)
-  const [zones, setZones] = useState(storage.get('zones', DEFAULT_ZONES).join(', '))
-  const [stamp, setStamp] = useState(String(Math.floor(Date.now() / 1000)))
-  const list = zones.split(',').map(z => z.trim()).filter(Boolean)
-  const res = useMemo(() => attempt(() => convertTime(time, from, list)), [time, from, zones])
-  const ts = useMemo(() => (stamp.trim() ? attempt(() => convertTimestamp(stamp, list)) : null), [stamp, zones])
-  // keyed by position: the source zone can also be one of the targets
-  const rows = r => h('div', { className: 'kv' }, r.map((z, i) => [
-    jsx('span', { className: 'k', children: i === 0 && r.length > 1 && r === fromRows ? `${z.zone} (from)` : z.zone }, `${i}k`),
-    jsx('span', { className: 'v', children: `${z.weekday} ${z.time}` }, `${i}v`),
-    jsx('span', { className: 'note', children: `${z.offset} ${z.abbr || ''}` }, `${i}o`)]).flat())
-  const fromRows = res.ok ? [res.value.from, ...res.value.to] : []
-  return h('div', { className: 'col' },
-    h(ToolHead, { title: 'Time zones', blurb: 'A time in one zone, shown in others; Unix timestamps both ways.' }),
-    h('div', { className: 'row' },
-      h(Field, { label: 'Time (2026-11-09 14:30, 14:30 or now)' }, h(Input, { value: time, onChange: setTime })),
-      h(Field, { label: 'In zone' }, h(Input, { value: from, onChange: setFrom })),
-      h(Field, { label: 'Show in (comma-separated IANA names)', className: 'grow' }, h(Input, { value: zones, onChange: v => { setZones(v); storage.set('zones', v.split(',').map(z => z.trim()).filter(Boolean)) } }))),
-    res.ok ? h('div', { className: 'panel col' }, rows(fromRows), h('p', { className: 'note' }, `Unix ${res.value.unix}`)) : h(Out, { err: true }, res.error),
-    h('div', { className: 'row' }, h(Field, { label: 'Unix seconds, milliseconds or an ISO date', className: 'grow' }, h(Input, { value: stamp, onChange: setStamp, className: 'inp mono' })),
-      h(Btn, { style: { alignSelf: 'end' }, onClick: () => setStamp(String(Math.floor(Date.now() / 1000))) }, 'Now')),
-    ts ? (ts.ok ? h('div', { className: 'panel col' }, h('div', { className: 'kv' },
-      h('span', { className: 'k' }, 'Read as'), h('span', { className: 'v' }, ts.value.input_unit), h('span', null),
-      h('span', { className: 'k' }, 'Unix'), h('span', { className: 'v' }, String(ts.value.unix)), h(Copy, { text: String(ts.value.unix) }),
-      h('span', { className: 'k' }, 'ISO UTC'), h('span', { className: 'v' }, ts.value.iso_utc), h(Copy, { text: ts.value.iso_utc })), rows(ts.value.zones)) : h(Out, { err: true }, ts.error)) : null)
 }
 
 export function GenerateTool() {
@@ -88,7 +57,7 @@ export function GenerateTool() {
     h('div', { className: 'panel col' }, h('h3', null, 'Password'),
       h('div', { className: 'row' },
         h(Field, { label: 'Length' }, h(Input, { type: 'number', min: 4, max: 256, value: opt.length, onChange: v => setOpt({ ...opt, length: Number(v) }), style: { width: 80 } })),
-        box('lower', 'a–z'), box('upper', 'A–Z'), box('digits', '0–9'), box('symbols', '!#$…'), box('avoidAmbiguous', 'no Il1O0o'),
+        box('lower', 'a-z'), box('upper', 'A-Z'), box('digits', '0-9'), box('symbols', '!#$…'), box('avoidAmbiguous', 'no Il1O0o'),
         h(Btn, { pri: true, onClick: () => gen(() => password(opt), setPw) }, 'Generate')),
       pw ? h('div', { className: 'row' }, h('code', { className: 'out grow' }, pw.password), h(Copy, { text: pw.password }), h('span', { className: 'note' }, `${pw.entropy_bits} bits`)) : null),
     h('div', { className: 'panel col' }, h('h3', null, 'Passphrase'),
@@ -99,13 +68,14 @@ export function GenerateTool() {
 }
 
 export function ColourTool() {
-  const [text, setText] = useState(storage.get('colour', '#2f9e6b'))
+  const [text, set] = useDraft(DRAFT.colourText, storage.get('colour', '#2f9e6b'))
   const [bg, setBg] = useState('#ffffff')
   const res = useMemo(() => attempt(() => colour(text, bg)), [text, bg])
-  const set = v => {
-    setText(v)
-    storage.set('colour', v)
-  }
+  // The last colour that reads as one is remembered across restarts (the dashboard shows it too),
+  // whether it was typed, picked or filled in by smart paste.
+  useEffect(() => {
+    if (res.ok && storage.get('colour') !== text) storage.set('colour', text)
+  }, [text, res.ok])
   const pick = async () => {
     try {
       const r = await new window.EyeDropper().open()
@@ -161,7 +131,7 @@ function savePng(svgText) {
 }
 
 export function QrTool() {
-  const [text, setText] = useState('')
+  const [text, setText] = useDraft(DRAFT.qrText, '')
   const svg = useMemo(() => {
     if (!text) return null
     return attempt(() => {

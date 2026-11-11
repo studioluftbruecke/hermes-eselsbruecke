@@ -1,0 +1,140 @@
+{
+ "note": "query, zone, label. null zone: not a place. Both halves must answer the same (engines/places.py resolve, clockmath.js resolvePlace). A zone name counts only when the list has it; Asia/Calcutta is an older name the list does not carry (its city Kolkata resolves).",
+ "resolve": [
+  [
+   "Tokyo",
+   "Asia/Tokyo",
+   "Tokyo"
+  ],
+  [
+   "tokyo",
+   "Asia/Tokyo",
+   "Tokyo"
+  ],
+  [
+   "San Francisco",
+   "America/Los_Angeles",
+   "San Francisco"
+  ],
+  [
+   "  san francisco ",
+   "America/Los_Angeles",
+   "San Francisco"
+  ],
+  [
+   "Mumbai",
+   "Asia/Kolkata",
+   "Mumbai"
+  ],
+  [
+   "Kolkata",
+   "Asia/Kolkata",
+   "Kolkata"
+  ],
+  [
+   "São Paulo",
+   "America/Sao_Paulo",
+   "São Paulo"
+  ],
+  [
+   "sao paulo",
+   "America/Sao_Paulo",
+   "São Paulo"
+  ],
+  [
+   "Dusseldorf",
+   "Europe/Berlin",
+   "Düsseldorf"
+  ],
+  [
+   "St. John's",
+   "America/St_Johns",
+   "St. John's"
+  ],
+  [
+   "st johns",
+   "America/St_Johns",
+   "St. John's"
+  ],
+  [
+   "Port au Prince",
+   "America/Port-au-Prince",
+   "Port-au-Prince"
+  ],
+  [
+   "New York",
+   "America/New_York",
+   "New York"
+  ],
+  [
+   "Europe/Berlin",
+   "Europe/Berlin",
+   "Berlin"
+  ],
+  [
+   "America/Argentina/Buenos_Aires",
+   "America/Argentina/Buenos_Aires",
+   "Buenos Aires"
+  ],
+  [
+   "utc",
+   "UTC",
+   "UTC"
+  ],
+  [
+   "UTC",
+   "UTC",
+   "UTC"
+  ],
+  [
+   "Ho Chi Minh City",
+   "Asia/Ho_Chi_Minh",
+   "Ho Chi Minh City"
+  ],
+  [
+   "Hanoi",
+   "Asia/Ho_Chi_Minh",
+   "Hanoi"
+  ],
+  [
+   "Washington DC",
+   "America/New_York",
+   "Washington DC"
+  ],
+  [
+   "Nowhere",
+   null,
+   null
+  ],
+  [
+   "Mars/Phobos",
+   null,
+   null
+  ],
+  [
+   "",
+   null,
+   null
+  ],
+  [
+   "Tok",
+   null,
+   null
+  ],
+  [
+   "europe/berlin",
+   "Europe/Berlin",
+   "Berlin"
+  ],
+  [
+   "ASIA/TOKYO",
+   "Asia/Tokyo",
+   "Tokyo"
+  ],
+  [
+   "Asia/Calcutta",
+   null,
+   null
+  ]
+ ]
+}

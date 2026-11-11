@@ -1,10 +1,11 @@
 // Pomodoro: the dial and phase bar computed from the timer record (works without the backend), work
 // and break following each other without a click, a countdown, "What did you finish?" on stop, the
-// 25/5 and 50/10 rhythms one click apart (D7), and a tip or an UnblockBrücke card in breaks.
+// 25/5 and 50/10 rhythms one click apart (D7), and a tip or an Unblockbrücke card in breaks.
 import { useValue } from '@hermes/plugin-sdk'
 import { useState } from 'react'
 import { jsx } from 'react/jsx-runtime'
 
+import { DRAFT, useDraft } from '../drafts.js'
 import { $rhythm, $tick, $timer, $tip, timerAction } from '../live.js'
 import { phaseAt } from '../timer.js'
 import { Btn, ConnectionBanner, Field, h, Input, ToolHead, useToolbox, useToolboxSave } from '../ui.js'
@@ -22,7 +23,7 @@ export function PomodoroTool() {
   const save = useToolboxSave()
   const [minutes, setMinutes] = useState('10')
   const [label, setLabel] = useState('')
-  const [result, setResult] = useState('')
+  const [result, setResult] = useDraft(DRAFT.pomodoroResult, '')
   const [client, setClient] = useState('')
   const s = t ? phaseAt(t, now) : null
   const running = s && !s.done
@@ -31,8 +32,8 @@ export function PomodoroTool() {
   const setRhythm = async name => {
     const doc = tb.data && tb.data.toolbox
     if (!doc) return
-    await save({ op: 'save', base_hash: tb.data.hash, toolbox: { ...doc, pomodoro: { ...doc.pomodoro, rhythm: name, ...RHYTHMS[name] } } })
-    $rhythm.set({ ...rhythm, rhythm: name, ...RHYTHMS[name] })
+    const out = await save({ op: 'save', base_hash: tb.data.hash, toolbox: { ...doc, pomodoro: { ...doc.pomodoro, rhythm: name, ...RHYTHMS[name] } } })
+    if (out) $rhythm.set({ ...rhythm, rhythm: name, ...RHYTHMS[name] })
   }
 
   return h('div', { className: 'col' },
@@ -62,7 +63,7 @@ export function PomodoroTool() {
               h(Btn, { style: { alignSelf: 'end' }, onClick: () => timerAction({ op: 'start', kind: 'countdown', minutes: Number(minutes), label: label || undefined }) }, 'Start countdown'))),
         running && (s.phase === 'short' || s.phase === 'long') && tip
           ? h('div', { className: 'tip' }, h('strong', null, tip.title), tip.text ? h('div', { className: 'muted' }, tip.text) : null,
-            tip.source === 'unblockbruecke' ? h('div', { className: 'note' }, 'A card from UnblockBrücke') : null)
+            tip.source === 'unblockbruecke' ? h('div', { className: 'note' }, 'A card from Unblockbrücke') : null)
           : null,
         running && s.next ? h('p', { className: 'note' }, `Next: ${s.next.phase === 'work' ? 'Work' : 'Break'} ${s.next.minutes} min`) : null)))
 }

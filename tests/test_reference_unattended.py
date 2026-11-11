@@ -158,6 +158,45 @@ def test_agent_writes_refused_unattended_reads_answer(tmp_path, monkeypatch):
     assert ctx.call("eselsbruecke_pad", action="undo")["ok"] is False  # undo stays refused unattended
 
 
+TOOLBOX_WRITES = [
+    ("set_switch", {"tool": "qr", "on": False}),
+    ("set_clock", {"place": "Lisbon"}),
+    ("set_clock", {"place": "Tokyo", "remove": True}),
+    ("set_pin", {"tool": "regex", "on": True}),
+    ("set_pin", {"tool": "pad", "on": False}),
+    ("restore", {"version": 1}),
+]
+
+
+@pytest.mark.parametrize("action,args", TOOLBOX_WRITES, ids=[f"{a} {' '.join(map(str, kw.values()))}"
+                                                             for a, kw in TOOLBOX_WRITES])
+def test_agent_toolbox_writes_are_refused_unattended_and_change_nothing(tmp_path, monkeypatch, action, args):
+    store = sub("store").Store(tmp_path / "data")
+    sub("toolbox").set_switch(store, "diff", False, "user")  # version 1, so restore has something to restore
+    before = (store.root / "toolbox.json").read_text(encoding="utf-8")
+    bridge = sub("hermes_bridge")
+    monkeypatch.setattr(bridge, "_finite_turn", lambda: True)
+    ctx = Surface(tmp_path / "data", "cli")
+    load_plugin().register(ctx)
+    out = ctx.call("eselsbruecke_toolbox", action=action, **args)
+    assert out["ok"] is False and out["error"] == "unattended" and "Nothing was changed" in out["message"]
+    assert (store.root / "toolbox.json").read_text(encoding="utf-8") == before
+    assert [v["n"] for v in sub("toolbox").versions(store)] == [1]
+    listed = ctx.call("eselsbruecke_toolbox", action="list")
+    assert listed["ok"] is True and len(listed["clocks"]) == 3 and "regex" not in listed["dashboard"]
+    assert ctx.call("eselsbruecke_toolbox", action="versions")["ok"] is True
+    assert ctx.call("eselsbruecke_toolbox", action="preview", changes={"dashboard": ["pad"]})["ok"] is True
+
+
+@pytest.mark.parametrize("action,args", TOOLBOX_WRITES[1:5], ids=["add-place", "remove-place", "pin", "unpin"])
+def test_agent_toolbox_writes_are_allowed_with_a_person_at_the_keyboard(tmp_path, action, args):
+    ctx = Surface(tmp_path / "data", "desktop")
+    load_plugin().register(ctx)
+    out = ctx.call("eselsbruecke_toolbox", action=action, **args)
+    assert out["ok"] is True and out["version"] == 1
+    assert sub("toolbox").versions(sub("store").Store(tmp_path / "data"))[0]["author"] == "agent"
+
+
 def test_route_write_works_inside_a_host_child(tmp_path, monkeypatch):
     monkeypatch.setenv("HERMES_PLUGIN_HOST_PROCESS", "1")
     api = sub("api")

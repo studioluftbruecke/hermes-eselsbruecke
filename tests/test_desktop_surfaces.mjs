@@ -139,6 +139,45 @@ await t.test('two-place install: the settings page names the Desktop-side update
   delete M.host.state.connectionId
 })
 
+await t.test('sidebar rows: the row reads Eselsbrücke at 51, and "Open Eselsbrücke" opens the dashboard from the palette', async () => {
+  const { M, contributions } = await registered()
+  const nav = contributions.filter(c => c.area === 'nav')
+  assert.strictEqual(nav.length, 1, 'one sidebar row')
+  assert.strictEqual(nav[0].id, 'nav')
+  assert.strictEqual(nav[0].order, 51)
+  assert.deepStrictEqual(nav[0].data, { codicon: 'tools', label: 'Eselsbrücke', path: '/eselsbruecke' })
+  const open = contributions.find(c => c.area === 'palette' && c.data.label === 'Open Eselsbrücke')
+  assert.ok(open, 'no palette row "Open Eselsbrücke"')
+  M.calls.length = 0
+  open.data.run()
+  assert.ok(M.calls.some(c => c[0] === 'navigate' && c[1] === '/eselsbruecke'), JSON.stringify(M.calls))
+})
+
+await t.test('sidebar rows: a stored choice hides the row at start; the settings block shows it again', async () => {
+  const env = await fresh(file)
+  env.store.set('sidebar', JSON.stringify({ show: false, position: 60 }))
+  env.M.plugin.register(env.ctx)
+  await tick(30)
+  assert.strictEqual(env.contributions.filter(c => c.area === 'nav').length, 0, 'a hidden row was registered')
+  const block = env.M.sidebar.SidebarBlock()
+  const tree = block.type(block.props)
+  assert.match(text(tree), /^SidebarShow in the sidebarPositionLower numbers sit higher\. Kanban is 50\.Open it from the command palette: Open Eselsbrücke\.$/)
+  nodes(tree).find(n => n.props['aria-label'] === 'Show in the sidebar').props.onCheckedChange(true)
+  const nav = env.contributions.filter(c => c.area === 'nav')
+  assert.strictEqual(nav.length, 1)
+  assert.strictEqual(nav[0].order, 60)
+  assert.deepStrictEqual(JSON.parse(env.store.get('sidebar')), { show: true, position: 60 })
+})
+
+await t.test('sidebar rows: the settings view draws the Sidebar block', async () => {
+  const { M } = await registered()
+  const view = M.settings.SettingsView({ data: { tools: [], toolbox: { layout: { chip: 'auto', chip_visible: true }, pomodoro: {}, alerts: {} } }, health: null, save: () => {} })
+  const kids = [].concat(view.props.children)
+  const at = kids.findIndex(k => k && k.type === M.sidebar.SidebarBlock)
+  assert.ok(at > 0, 'no Sidebar block on the settings page')
+  assert.ok(at < kids.findIndex(k => k && k.type === M.settings.TwoPlaceNote), 'the Sidebar block sits above the two-place note')
+})
+
 await t.test('S4: pad checkboxes are named by their line, and the actions button says whether its menu is open', async () => {
   const { M } = await registered()
   assert.strictEqual(typeof M.pad.Line, 'function', 'tools/pad.js exports no Line')

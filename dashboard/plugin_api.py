@@ -1,8 +1,9 @@
 """Backend routes for the Eselsbrücke Desktop page, mounted at `/api/plugins/eselsbruecke/`.
 
     GET  /health                    {ok, schema, version, time_zone}
-    GET  /toolbox                   the toolbox file, every tool with its switch, presets, hash
-    POST /toolbox                   {op: switch, module, on} | {op: preset, preset} |
+    GET  /toolbox                   the toolbox file (tools, dashboard, world clock places, status bar),
+                                    every tool with its switch, hash
+    POST /toolbox                   {op: switch, module, on} |
                                     {op: save, toolbox, base_hash} (409 when the file changed) |
                                     {op: restore, version}
     GET  /toolbox/versions          saved versions, newest first

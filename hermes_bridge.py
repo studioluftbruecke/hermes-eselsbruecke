@@ -3,7 +3,7 @@
 - `dispatch(tool, args, ctx=None)`: inside an agent turn through `ctx.dispatch_tool` (the plugin's
   scope); in a dashboard route (no ctx, P8) by importing the built-in tool module so the tool
   registers, then `tools.registry.registry.dispatch` (P5, Q5).
-- `has_tool(name)`: whether a tool (UnblockBrücke's card) is registered in this process.
+- `has_tool(name)`: whether a tool (Unblockbrücke's card) is registered in this process.
 """
 from __future__ import annotations
 

@@ -64,6 +64,51 @@ def test_time_zones_and_dst(conv):
         conv.convert_time("now", "Mars/Olympus", ["UTC"])
 
 
+def test_a_city_names_its_zone_and_the_row_says_which_place(conv):
+    out = conv.convert_time("2026-11-09 10:00", "berlin", ["Mumbai", "san francisco", "São Paulo", "Asia/Tokyo", "utc"])
+    assert out["from"]["zone"] == "Europe/Berlin" and out["from"]["place"] == "Berlin"
+    assert [(r["zone"], r.get("place"), r["time"]) for r in out["to"]] == [
+        ("Asia/Kolkata", "Mumbai", "2026-11-09 14:30"),
+        ("America/Los_Angeles", "San Francisco", "2026-11-09 01:00"),
+        ("America/Sao_Paulo", "São Paulo", "2026-11-09 06:00"),
+        ("Asia/Tokyo", None, "2026-11-09 18:00"),
+        ("UTC", None, "2026-11-09 09:00")]
+    by_zone = conv.convert_time("2026-11-09 10:00", "Europe/Berlin", ["Asia/Kolkata"])
+    assert {k: v for k, v in out["to"][0].items() if k != "place"} == by_zone["to"][0]
+    assert out["unix"] == by_zone["unix"]
+
+
+def test_a_zone_name_answers_with_the_same_keys_as_before(conv):
+    out = conv.convert_time("2026-11-09 10:00", "Europe/Berlin", ["UTC", "America/New_York"])
+    for row in (out["from"], *out["to"]):
+        assert set(row) == {"zone", "time", "weekday", "offset", "abbr"}
+    stamp = conv.convert_timestamp("1794245079", ["Europe/Berlin"])
+    assert set(stamp["zones"][0]) == {"zone", "time", "weekday", "offset", "abbr"}
+
+
+def test_timestamps_and_cron_take_a_city_too(conv):
+    stamp = conv.convert_timestamp("1794245079", ["Tokyo", "UTC"])
+    assert stamp["zones"][0] == {"zone": "Asia/Tokyo", "place": "Tokyo", "time": "2026-11-10 02:24", "weekday": "Tue",
+                                 "offset": "UTC+09:00", "abbr": "JST"}
+    naive = conv.convert_timestamp("2026-11-09T10:00:00", ["Berlin"])  # no offset: read in the first place
+    assert naive["unix"] == 1794214800
+    pytest.importorskip("croniter")
+    now = dt.datetime(2026, 11, 9, 10, 7, tzinfo=BERLIN)
+    out = conv.cron("0 9 * * *", "Tokyo", 1, now)
+    assert out["zone"] == "Asia/Tokyo" and out["place"] == "Tokyo" and out["next"] == ["2026-11-10 09:00 Tue"]
+    assert "place" not in conv.cron("0 9 * * *", "Asia/Tokyo", 1, now)
+
+
+@pytest.mark.parametrize("typed", ["Atlantis", "Tok", "Mars/Olympus", "", "Europe/"])
+def test_an_unknown_place_says_what_to_type(conv, typed):
+    with pytest.raises(conv.ConvertError) as exc:
+        conv.convert_time("now", typed, ["UTC"])
+    assert str(exc.value) == f"unknown place or time zone {typed!r} (use a city like Tokyo or a zone like Europe/Berlin)"
+    if typed:
+        with pytest.raises(conv.ConvertError):
+            conv.convert_time("now", "UTC", ["Tokyo", typed])
+
+
 def test_timestamps(conv):
     s = conv.convert_timestamp("1794245079", ["UTC"])
     assert s["input_unit"] == "s" and s["iso_utc"] == "2026-11-09T17:24:39Z"

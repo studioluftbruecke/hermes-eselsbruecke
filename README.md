@@ -1,55 +1,69 @@
 # Eselsbrücke
 
 A helper toolbox for Hermes. Every tool in the box has an on/off switch, so the box holds only what
-you use. A today pad for short notes, a pomodoro that moves on by itself, a billable time log, a
-formatter, a colour picker and a row of small tools. Your Hermes agent can call the same tools, so
+you use. A dashboard with the tools you pinned, a world clock, a today pad for short notes, a
+pomodoro that moves on by itself, a billable time log, a formatter, a colour picker and a row of
+small tools. Your Hermes agent can call the same tools, so
 its arithmetic, conversions and formatting come out exact instead of guessed.
 
 "Eselsbrücke" is the German word for a memory aid: a little bridge that gets you across.
 
-Version 0.1.0. Needs Hermes 0.23 or later, and Hermes Desktop 0.23 or later for the Desktop half
+Version 0.2.0. Needs Hermes 0.23 or later, and Hermes Desktop 0.23 or later for the Desktop half
 (older Desktop builds read at most 512 KiB of a plugin file).
+
+Coming from 0.1: update the plugin where your Hermes backend runs and on the computer with Hermes
+Desktop. Your `toolbox.json` is carried over on first load (switches, pomodoro rhythm and chip
+choice stay; the presets are gone). While the two halves are on different versions, the page says
+which side to update.
 
 ## Where it shows up in Hermes Desktop
 
-- A **Toolbox** page (sidebar row): the tools you switched on in a rail on the left, one tool at a
-  time on the right. The first visit asks which set to start with (Everything, Focus, Developer,
-  Designer).
-- **Beside the chat:** "Open beside chat" puts the toolbox in a pane next to the conversation.
-- A **status-bar chip**: the running pomodoro phase or time-log timer, in minutes, and "n not synced"
-  while clicks wait for Hermes. Its menu pauses, stops and opens the toolbox.
-- **Command palette** rows: open any switched-on tool, add a line to today's pad, start a
-  pomodoro, copy a new UUID, open the toolbox beside the chat.
-- **Shortcuts** (rebindable): `Cmd+Shift+E` opens the toolbox, `Cmd+Alt+P` adds a line to today's
+- An **Eselsbrücke** page (sidebar row). It opens on your **dashboard**: the world clock, today's
+  open pad lines, the pomodoro, the time-log timer and one-click tiles for the other tools you
+  pinned. "Edit" moves, removes and adds them; "Pin to dashboard" is also on every tool's page. A
+  paste field at the top recognises JSON, a Unix timestamp, a colour, Base64, a cron line or a link
+  and opens the matching tool with it. The rail on the left lists every switched-on tool. On the
+  first visit a card names every tool with a switch each (all on); it closes with "Done".
+- **Beside the chat:** "Open beside chat" puts the same dashboard and tools in a pane next to the
+  conversation, in one column.
+- A **status-bar chip**, at most 60 px wide: an icon while nothing runs, a ring and the minutes left
+  for a pomodoro, a dot and the elapsed time for a time-log timer, a dot while clicks wait for
+  Hermes. Its menu pauses, stops and opens the dashboard. "Show in status bar" in the settings
+  hides it.
+- **Command palette** rows: open the dashboard or any switched-on tool, add a line to today's pad,
+  start a pomodoro, copy a new UUID, open Eselsbrücke beside the chat.
+- **Shortcuts** (rebindable): `Cmd+Shift+E` opens the dashboard, `Cmd+Alt+P` adds a line to today's
   pad.
 - **Alerts:** a phase end, a countdown or a reminder shows as a toast in Desktop and as a macOS
   notification while Hermes is in the background.
-- **Plugin settings** (Capabilities → Plugins → Eselsbrücke → Toolbox): presets, a switch per tool,
-  the pomodoro rhythm, what the chip shows, "Alerts while Desktop is closed", Hermes' time zone, and
+- **Plugin settings** (Settings → Plugins → **Eselsbrücke**): the status-bar chip (shown or not,
+  and what it shows), a switch per tool, the pomodoro rhythm, "Alerts while Desktop is closed", Hermes' time zone, and
   the saved versions of your toolbox with restore.
 - Every tool has an **Ask Hermes** button: a new chat opens with the tool drafted, and you press send.
+- What you typed into a tool is still there when you come back from another tool. It is kept in
+  memory only, never written to disk, and is gone when Desktop restarts.
 
 ## Tools
 
 | Tool | What you get | Your agent |
 | --- | --- | --- |
-| Today pad | Short notes for today. Unchecked lines roll to tomorrow. A line can be a to-do, a note, a reminder at a time, or a prompt for tomorrow (it waits under "Queued for today" with "Start this chat"). A line can become a kanban card. A line ending in `=` shows its result | Sees the pad only when you attach it (`@pad:today`, `@pad:yesterday`, `@pad:2026-11-09`, `@pad:queued`); adds lines only when you ask, each with an undo |
+| Today pad | Short notes for today. Unchecked lines roll to tomorrow. A line can be a to-do, a note, a reminder at a time, or a prompt for tomorrow (it waits under "Queued for today" with "Start this chat"). A line can become a kanban card. A line ending in `=` shows its result. Click a line to edit it | Sees the pad only when you attach it (`@pad:today`, `@pad:yesterday`, `@pad:2026-11-09`, `@pad:queued`); adds lines only when you ask, each with an undo |
 | Pomodoro | Work and break follow each other without a click (25/5 with a long break after four, 50/10, or your own); a countdown; a tip at each break; "what did you finish?" goes onto the pad as a done line | `eselsbruecke_timer` |
-| Time log | Billable timers per client and project, time added afterwards, weekly totals and amounts with an hourly rate, CSV; every entry change is kept and can be undone (a client's rate is a setting and has no undo); a click made while Desktop cannot reach Hermes is synced later with its real time | `eselsbruecke_timelog` |
+| Time log | Billable timers per client and project, time added afterwards, entries edited in place, weekly totals and amounts with an hourly rate in each client's currency, CSV; every entry change is kept and can be undone (a client's rate is a setting and has no undo); a click made while Desktop cannot reach Hermes is synced later with its real time | `eselsbruecke_timelog` |
 | Formatter | JSON and YAML through the same engine as the agent; Markdown, TypeScript, JavaScript, CSS and HTML through Prettier in Desktop; JSON to YAML and back | `eselsbruecke_format` (JSON, YAML) |
 | Colour picker | hex, rgb, hsl and oklch; WCAG contrast against a background; pick from the screen where Desktop allows it | `eselsbruecke_convert` |
 | Text diff | Two texts, line and word changes, a unified diff to copy | `eselsbruecke_text` |
 | Regex tester | Matches and groups as you type (JavaScript RegExp) | `eselsbruecke_text` (Python `re`; the page says which flavour) |
 | Token counter | Hermes' own estimate at once; the exact o200k count (GPT-4o and later) on request | `eselsbruecke_text` (the estimate) |
-| Time zones | A time in one zone shown in others; Unix timestamps both ways | `eselsbruecke_convert` |
+| World clock | Your places side by side: search a city to add it (no zone names to type), each with its time, its offset from you and a 24-hour bar of working hours. A slider moves every row to another time, "Copy as text" gives one line for a message. Unix timestamps both ways | `eselsbruecke_convert` (takes city names; "what time is it" answers for your saved places) |
 | Encode and decode | Base64, Base64URL and URL encoding, UTF-8 | `eselsbruecke_convert` |
 | UUID, password | UUID v4 and v7, passwords, passphrases (EFF short word list) | `eselsbruecke_generate` |
 | Cron explainer | A cron line in words, with the next runs in your zone | `eselsbruecke_convert` |
 | QR code | A QR code for any text or link; copy or download as SVG or PNG | none (Desktop only) |
 | Calculator | No page of its own: the engine behind the pad's `=` lines and your agent's exact arithmetic (percentages, units, durations times rates, dates), with its own switch | `eselsbruecke_calc` |
 
-`eselsbruecke_toolbox` lets the agent list the tools, switch one on or off, preview and apply a
-change, or restore a version, when you ask it to; every save keeps a version. A switched-off tool
+`eselsbruecke_toolbox` lets the agent list the tools, switch one on or off, add or remove a place
+on the world clock, pin a tool to the dashboard, preview and apply a change, or restore a version, when you ask it to; every save keeps a version. A switched-off tool
 is refused in a running chat at once and leaves the agent's tool list in the next chat. Every pad
 line and time-log entry the agent changes carries its name and can be undone in one step. Client
 names and rates have no undo.
@@ -90,7 +104,7 @@ uses the server's clock (often UTC), and the settings page says so.
 - **Network calls:** none beyond your own Hermes backend. The Desktop half talks only to this
   plugin's routes there (`/api/plugins/eselsbruecke/...`), including one download of the token
   counter's vocabulary (2.3 MB) when you first ask for an exact count in a Desktop session. The
-  formatter (Prettier languages), colour, regex, time zones, encoding, generators, QR code and the
+  formatter (Prettier languages), colour, regex, the world clock, encoding, generators, QR code and the
   running pomodoro also work while Desktop cannot reach the backend.
 - **Files:** everything lives in the plugin's data folder
   (`<profile>/plugin-data/agent-plugin-eselsbruecke-…`): `toolbox.json` and its last 20 versions
@@ -99,7 +113,7 @@ uses the server's clock (often UTC), and the settings page says so.
   ever appended), `clients.json` (clients and rates), `presence.json` (Desktop's heartbeat),
   `alerts_state.json` (the alert job's last setup), `tick_state.json` (the alert ledger),
   `tick_errors.jsonl` (the newest 20 alert-job errors), and `exports/` (CSV files the agent writes).
-  Desktop keeps a few view choices and the outbox (clicks waiting for Hermes) in its own plugin storage on your Mac.
+  Desktop keeps a few view choices, the last loaded world-clock list and the outbox (clicks waiting for Hermes) in its own plugin storage on your Mac.
 - **Scheduled jobs:** when "Alerts while Desktop is closed" is on (off by default), the plugin
   creates one Hermes job, `eselsbruecke-alerts`, every minute and without a model, and writes one
   small script, `<profile>/scripts/eselsbruecke_alerts.py`. The script prints only an alert that is
@@ -153,6 +167,8 @@ the same version. With Hermes and Desktop on one computer, one install covers bo
   computer and `hermes -p <profile> plugins list` on the server, or run
   `git -C ~/.hermes/profiles/<profile>/plugins/eselsbruecke log -1 --oneline` on each
   (`~/.hermes/plugins/eselsbruecke` for the default profile).
+- The sidebar switch and position on the plugin's settings page are kept per Desktop, so a second
+  computer starts with the defaults.
 - The plugin's settings page shows a reminder with the Desktop-side update command whenever Desktop
   is connected to a Hermes on another computer.
 

@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { jsx } from 'react/jsx-runtime'
 
 import { post, rest, storage } from '../core.js'
+import { DRAFT, useDraft } from '../drafts.js'
 import { estimateTokens } from '../engines.js'
 import { cancelRegex, runRegex, TIMEOUT_MS as REGEX_TIMEOUT_MS } from '../regex_run.js'
 import { prettier, tiktokenLite } from '../vendor.js'
@@ -30,7 +31,7 @@ async function formatText(text, lang) {
 
 export function FormatterTool() {
   const [lang, setLang] = useState(storage.get('fmtLang', 'json'))
-  const [text, setText] = useState('')
+  const [text, setText] = useDraft(DRAFT.formatterText, '')
   const [res, setRes] = useState(null)
   const [busy, setBusy] = useState(false)
   const run = async (input = text) => {
@@ -78,8 +79,8 @@ export function FormatterTool() {
 }
 
 export function DiffTool() {
-  const [left, setLeft] = useState('')
-  const [right, setRight] = useState('')
+  const [left, setLeft] = useDraft(DRAFT.diffLeft, '')
+  const [right, setRight] = useDraft(DRAFT.diffRight, '')
   const [res, setRes] = useState(null)
   const l = useDebounced(left, 400)
   const r = useDebounced(right, 400)
@@ -113,9 +114,9 @@ function DiffRow({ row }) {
 }
 
 export function RegexTool() {
-  const [pattern, setPattern] = useState('')
-  const [flags, setFlags] = useState('gi')
-  const [text, setText] = useState('')
+  const [pattern, setPattern] = useDraft(DRAFT.regexPattern, '')
+  const [flags, setFlags] = useDraft(DRAFT.regexFlags, 'gi')
+  const [text, setText] = useDraft(DRAFT.regexText, '')
   // The pattern runs in a worker with a time limit (X13), 150 ms after the last key. The result keeps
   // the text it was computed on, so the marks never point into a newer text.
   const input = useDebounced(JSON.stringify([pattern, flags, text]), 150)
@@ -176,7 +177,7 @@ async function loadEncoder() {
 }
 
 export function TokensTool() {
-  const [text, setText] = useState('')
+  const [text, setText] = useDraft(DRAFT.tokensText, '')
   const [exact, setExact] = useState(encoder ? 'ready' : 'idle')
   const firstMs = storage.get('tokenFirstMs', null)
   const auto = firstMs != null && firstMs <= 1000
@@ -199,7 +200,7 @@ export function TokensTool() {
     h(Area, { value: text, onChange: setText, rows: 10, placeholder: 'Paste a prompt' }),
     h('div', { className: 'kv' },
       h('span', { className: 'k' }, 'Estimate'), h('span', { className: 'v' }, String(est)), h('span', { className: 'note' }, 'UTF-8 bytes / 4'),
-      h('span', { className: 'k' }, 'o200k exact'), h('span', { className: 'v' }, count != null ? String(count) : '—'),
+      h('span', { className: 'k' }, 'o200k exact'), h('span', { className: 'v' }, count != null ? String(count) : 'not counted'),
       exact === 'ready' ? h('span', { className: 'note' }, encoderMs != null ? `encoder built in ${encoderMs} ms` : '')
         : exact === 'loading' ? h('span', { className: 'note' }, 'loading…')
           : h(Btn, { onClick: start }, 'Count exactly'),
@@ -209,7 +210,7 @@ export function TokensTool() {
 }
 
 export function CronTool() {
-  const [expr, setExpr] = useState('*/15 9-17 * * 1-5')
+  const [expr, setExpr] = useDraft(DRAFT.cronExpr, '*/15 9-17 * * 1-5')
   const [zone, setZone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC')
   const [res, setRes] = useState(null)
   const e = useDebounced(expr, 300)

@@ -104,8 +104,6 @@ def toolbox_post(body: Any) -> "tuple[int, dict]":
     s, op = store(), body.get("op")
     if op == "switch":
         out = toolbox.set_switch(s, str(body.get("module", "")), body.get("on"), "user")
-    elif op == "preset":
-        out = toolbox.apply_preset(s, str(body.get("preset", "")), "user")
     elif op == "save":
         with s.lock():
             current = toolbox.load(s)
@@ -116,7 +114,7 @@ def toolbox_post(body: Any) -> "tuple[int, dict]":
     elif op == "restore":
         out = toolbox.restore(s, body.get("version"), "user")
     else:
-        return fail(400, "invalid", "op must be switch, preset, save or restore")
+        return fail(400, "invalid", "op must be switch, save or restore")
     return ok({"saved": {"version": out["version"], "summary": out["summary"]}, **toolbox.view(s)})
 
 

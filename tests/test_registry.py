@@ -16,6 +16,33 @@ def test_fourteen_modules_nine_tools():
         assert m["agent_tool"] is None or m["agent_tool"] in reg.TOOLS
 
 
+def test_the_rows_say_how_a_tool_sits_on_the_dashboard():
+    reg = sub("registry")
+    kinds = {m["id"]: m["dashboard"] for m in reg.MODULES}
+    assert {k for k, v in kinds.items() if v == "widget"} == {"pad", "pomodoro", "timelog", "timezones", "generate",
+                                                              "colour"}
+    assert {k for k, v in kinds.items() if v == "tile"} == {"formatter", "diff", "regex", "tokens", "cron", "encode",
+                                                            "qr"}
+    assert kinds["calc"] is None
+    assert all("dashboard" in row for row in reg.public_modules())
+
+
+def test_the_world_clock_keeps_its_id_and_the_daily_group_replaces_focus():
+    reg = sub("registry")
+    assert "focus" not in reg.GROUPS and reg.GROUPS[0] == "daily"
+    assert {m["id"] for m in reg.MODULES if m["group"] == "daily"} == {"pad", "pomodoro", "timelog", "timezones"}
+    row = reg.MODULE_BY_ID["timezones"]
+    assert row["title"] == "World clock" and row["blurb"] == "The time in your places, and Unix timestamps."
+    assert reg.module_of("eselsbruecke_convert", "time") == "timezones"
+
+
+def test_the_toolbox_tool_has_no_preset_and_guards_its_writes():
+    spec = sub("registry").TOOLS["eselsbruecke_toolbox"]
+    assert list(spec["actions"]) == ["list", "set_switch", "set_clock", "set_pin", "preview", "apply", "versions",
+                                     "restore"]
+    assert set(spec["actions"]) - spec["writes"] == {"list", "preview", "versions"}
+
+
 def test_every_action_maps_to_one_known_module():
     reg = sub("registry")
     for tool, spec in reg.TOOLS.items():

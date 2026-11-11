@@ -11,6 +11,8 @@ import { fileURLToPath, pathToFileURL } from 'url'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 export const SRC = path.resolve(here, '..', 'desktop', 'src')
+// The version the bundle under test carries (core.js VERSION); the fake /health answers `server.version`.
+export const HARNESS_VERSION = '0.2.0'
 
 const SDK = `
 const listeners = new Map()
@@ -28,7 +30,9 @@ const any = () => null
 export const useValue = a => a.get()
 export const useQuery = () => ({})
 export const useQueryClient = () => ({ setQueryData: any, invalidateQueries: any })
-export const Switch = any, Popover = any, PopoverTrigger = any, PopoverContent = any
+export const Switch = any, Input = any, Popover = any, PopoverTrigger = any, PopoverContent = any
+export const DropdownMenu = any, DropdownMenuContent = any, DropdownMenuItem = any, DropdownMenuSeparator = any, DropdownMenuTrigger = any
+export const Codicon = any
 export const KEYBINDS_AREA = 'keybinds', PALETTE_AREA = 'palette', ROUTES_AREA = 'routes', SIDEBAR_NAV_AREA = 'nav'
 export const STATUSBAR_AREAS = { right: 'statusbar' }
 export const pluginSettingsHref = () => '/settings'
@@ -86,13 +90,22 @@ export async function bundle(nmArg) {
     ns('chip', 'chip.js'),
     ns('settings', 'settings.js'),
     ns('pad', 'tools/pad.js'),
+    ns('clockmath', 'clockmath.js'),
+    ns('detect', 'detect.js'),
+    ns('drafts', 'drafts.js'),
+    ns('dashboard', 'dashboard.js'),
+    ns('page', 'page.js'),
+    ns('ui', 'ui.js'),
+    ns('clockTool', 'tools/clock.js'),
+    ns('timelogTool', 'tools/timelog.js'),
+    ns('sidebar', 'sidebar.js'),
     `export { host, calls } from '@hermes/plugin-sdk'`,
   ].join('\n'))
   const out = path.join(dir, 'desktop.mjs')
   await esbuild.build({
     entryPoints: [entry], bundle: true, format: 'esm', platform: 'node', outfile: out, nodePaths: [nm], minify: true,
     alias: { '@hermes/plugin-sdk': stub('sdk.js', SDK), react: stub('react.js', REACT), 'react/jsx-runtime': stub('jsx.js', JSX) },
-    loader: { '.txt': 'text' }, logLevel: 'error',
+    loader: { '.txt': 'text' }, logLevel: 'error', define: { __ESB_VERSION__: JSON.stringify(HARNESS_VERSION) },
   })
   return out
 }
@@ -103,7 +116,13 @@ const ipc = (status, body) => new Error(`Error invoking remote method 'hermes:ap
 export async function fresh(file) {
   const M = await import(`${pathToFileURL(file).href}?${Math.random()}`)
   const server = { timer: null, applied: new Set(), down: false, fail500: false, slowMs: 0, log: [],
-    tools: [{ id: 'pad', on: true, surfaces: ['page', 'palette'] }, { id: 'pomodoro', on: true, surfaces: ['page', 'palette'] }] }
+    version: HARNESS_VERSION, saves: [],
+    tools: [{ id: 'pad', title: "Today's pad", group: 'daily', on: true, dashboard: 'widget', surfaces: ['page', 'palette'] },
+      { id: 'pomodoro', title: 'Pomodoro', group: 'daily', on: true, dashboard: 'widget', surfaces: ['page', 'palette'] },
+      { id: 'timezones', title: 'World clock', group: 'daily', on: true, dashboard: 'widget', surfaces: ['page', 'palette'] },
+      { id: 'formatter', title: 'Formatter', group: 'code', on: true, dashboard: 'tile', surfaces: ['page', 'palette'] }],
+    toolbox: { schema: 2, first_run: false, dashboard: ['timezones', 'pad', 'pomodoro', 'formatter'], clocks: [{ zone: 'Asia/Tokyo', label: 'Tokyo' }],
+      layout: { chip: 'auto', chip_visible: true }, pomodoro: { rhythm: '25/5', work: 25, short: 5, long: 15, cycles: 4 }, tips: [], alerts: { while_closed: false } } }
   const store = new Map()
   const disposers = []
   const contributions = []
@@ -120,8 +139,16 @@ export async function fresh(file) {
       if (server.slowMs && p === '/timer' && method === 'POST' && o.body.op === 'start') await new Promise(r => setTimeout(r, server.slowMs))
       if (server.down) throw new Error("Error invoking remote method 'hermes:api': Error: connect ECONNREFUSED 127.0.0.1:9119")
       server.log.push(`${method} ${p}${o.body && o.body.op ? ` ${o.body.op}` : ''}`)
-      if (p === '/health' || p === '/presence' || p === '/alerts/reconcile') return { ok: true }
-      if (p === '/toolbox') return { ok: true, tools: server.tools, toolbox: { pomodoro: { work: 25, short: 5, long: 15, cycles: 4 }, layout: { chip: 'auto' } } }
+      if (p === '/health') return { ok: true, plugin: 'eselsbruecke', version: server.version }
+      if (p === '/presence' || p === '/alerts/reconcile') return { ok: true }
+      if (p === '/toolbox' && method === 'POST') {
+        // like api.py toolbox_post: `save` replaces the file, `switch` flips one tool; every save is kept in server.saves
+        server.saves.push(o.body)
+        if (o.body.op === 'save') server.toolbox = o.body.toolbox
+        if (o.body.op === 'switch') server.tools = server.tools.map(t => (t.id === o.body.module ? { ...t, on: o.body.on } : t))
+        return { ok: true, tools: server.tools, toolbox: server.toolbox, hash: `h${server.saves.length}` }
+      }
+      if (p === '/toolbox') return { ok: true, tools: server.tools, toolbox: server.toolbox, hash: `h${server.saves.length}` }
       if (p === '/timelog' || p === '/pad') return { ok: true }
       if (p === '/timer' && method === 'GET') return { ok: true, timer: server.timer }
       if (p === '/timer') {

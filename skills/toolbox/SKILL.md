@@ -1,14 +1,14 @@
 ---
 name: toolbox
 description: "Use Eselsbrücke's helper tools: which tool answers what, pad and time-log rules, undo."
-version: 0.1.0
+version: 0.2.0
 ---
 
 # Eselsbrücke toolbox
 
 Eselsbrücke is the user's helper toolbox: a today pad, a pomodoro that runs itself, a billable time
-log, a formatter, a colour picker and small tools. Every tool has a switch. You call the same engines
-the user's Toolbox page uses, so your answers match theirs exactly.
+log, a world clock, a formatter, a colour picker and small tools. Every tool has a switch. You call
+the same engines the user's Eselsbrücke page uses, so your answers match theirs exactly.
 
 ## Which tool answers what
 
@@ -16,7 +16,7 @@ the user's Toolbox page uses, so your answers match theirs exactly.
 |---|---|
 | Arithmetic, percentages, "16,90 * 12", units ("5 km in mi"), "2h 30m * 85 €/h", dates ("2026-11-09 + 30 days") | `eselsbruecke_calc` |
 | Format or check JSON / YAML, JSON to YAML and back | `eselsbruecke_format` (`format`, `convert`) |
-| A time in other zones, a Unix timestamp | `eselsbruecke_convert` `time`, `timestamp` |
+| What time it is for the user's places, a time in other places, a Unix timestamp | `eselsbruecke_convert` `time`, `timestamp` |
 | base64 / URL encode or decode | `eselsbruecke_convert` `encode`, `decode` |
 | A colour in hex, rgb, hsl, oklch; contrast ratio | `eselsbruecke_convert` `colour` |
 | What a cron expression means, its next runs | `eselsbruecke_convert` `cron` |
@@ -25,7 +25,7 @@ the user's Toolbox page uses, so your answers match theirs exactly.
 | Add something to today's pad, a reminder, a prompt for tomorrow | `eselsbruecke_pad` `add` |
 | Start, pause, resume, stop or check a pomodoro or countdown | `eselsbruecke_timer` |
 | Billable time: start, stop, add, edit, delete, totals, CSV | `eselsbruecke_timelog` |
-| Switch tools on or off, presets, rearrange, restore a version | `eselsbruecke_toolbox` |
+| Switch a tool on or off, add or remove a world clock place, pin a tool to the dashboard, restore a version | `eselsbruecke_toolbox` |
 
 Prefer these tools over mental arithmetic or a guessed conversion: the answer is then exact and
 identical to what the user sees on the page.
@@ -38,8 +38,11 @@ identical to what the user sees on the page.
 - **Time log changes carry your name.** Every change you make is recorded with author `agent` and
   can be undone with `eselsbruecke_timelog` `undo`. If the setting `agent_timelog_edits` is `never`,
   edit and delete are refused: say so, do not look for another way.
-- **Toolbox changes only on request.** Use `preview`, show the changes, then `apply`. Every save is a
-  version the user can restore.
+- **A place is a city or a zone** ("Mumbai", "San Francisco", "Europe/Berlin", "UTC"), wherever a
+  tool takes a zone. `time` without `to_zones` answers for the places on the user's world clock.
+- **Toolbox changes only on request.** `set_switch`, `set_clock` and `set_pin` make one change each;
+  for anything else use `preview`, show the changes, then `apply`. Every save is a version the user
+  can restore.
 - **`switched_off`** means the user switched that tool off. Say so and offer to switch it on; never
   work around it.
 - **`unattended`** means no person is at the keyboard (a scheduled job or a one-shot run): writes

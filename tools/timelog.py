@@ -14,7 +14,7 @@ SCHEMA = {
         "note, start, end, billable}}; delete {entry_id}; undo reverts your newest change (undoing a start also "
         "restarts the timer it stopped, unless another timer runs now; `restarted` lists it, `note` says why "
         "not); week {date?} lists "
-        "entries and totals per client and project (with amounts when the client has a rate); export {date?} "
+        "entries and totals per client and project (with amount and currency when the client has a rate); export {date?} "
         "writes that week as CSV into the plugin's data folder and returns the path; clients lists clients and "
         "rates. If edits answer agent_timelog_edits, the user turned agent edits off: say so."
     ),

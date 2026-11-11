@@ -107,7 +107,7 @@ export async function sendOrQueue(kind, body) {
     const head = left.find(i => i.kind === kind)
     if (head && head.op.op_id !== op.op_id && stuckReason(head)) {
       const when = head.op.at ? new Date(head.op.at).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : ''
-      alertBoth('Eselsbrücke', `This click waits behind an older ${what(head)}${when ? ` (${when})` : ''} that no longer syncs by itself. Open the status-bar chip to Try again or Discard it.`, 'warning')
+      alertBoth('Eselsbrücke', `This click waits behind an older ${what(head)}${when ? ` (${when})` : ''} that no longer syncs by itself. Open the status-bar chip, or "not synced" on the Eselsbrücke page, to Try again or Discard it.`, 'warning')
     }
     return { ok: false, queued: true, behind: true }
   }

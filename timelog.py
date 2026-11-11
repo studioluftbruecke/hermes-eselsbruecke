@@ -4,7 +4,7 @@
         {"op_id", "op": start|stop|add|edit|delete|undo, "entry_id", "at", "by": user|agent,
          "source": chip|page|palette|agent|pomodoro|outbox, "fields"?: {client, project, note, start, end,
          billable}, "undoes"?}
-    clients.json  {"clients": [{"name", "rate"?, "currency"?}]}
+    clients.json  {"clients": [{"name", "rate"?, "currency"?}]}   (a rate without a currency is in EUR)
 
 An entry is the fold of its ops in time order; an `undo` op reverts one named op (the agent's undo
 defaults to its own newest op, a click to the newest op). An `op_id` already stored is acknowledged
@@ -19,6 +19,7 @@ import csv
 import datetime as dt
 import io
 import os
+import re
 import secrets
 import threading
 from decimal import ROUND_HALF_UP, Decimal
@@ -386,6 +387,9 @@ def set_client(store: Store, name: str, rate: Optional[float], currency: str = "
     name = " ".join(str(name or "").split())[:200]
     if not name:
         raise TimelogError("invalid", "a client needs a name")
+    currency = str(currency or "EUR").strip().upper()
+    if not re.fullmatch(r"[A-Z]{3}", currency):
+        raise TimelogError("invalid", "a currency is three letters, like EUR or USD")
     with store.lock():
         rows = [c for c in clients(store) if c.get("name") != name]
         rows.append({"name": name, **({"rate": float(rate), "currency": currency} if rate is not None else {})})
@@ -404,7 +408,9 @@ def week(store: Store, day: Optional[dt.date] = None, week_starts: str = "monday
     now = now or clock.now()
     day = day or now.date()
     first, last = week_range(day, week_starts)
-    rates = {c["name"]: c.get("rate") for c in clients(store)}
+    known = clients(store)
+    rates = {c["name"]: c.get("rate") for c in known}
+    currencies = {c["name"]: c.get("currency") or "EUR" for c in known if c.get("rate") is not None}
     folded, starts, bad = _snapshot(store)
     lo, hi = (dt.datetime.combine(d, dt.time(), tzinfo=now.tzinfo).timestamp() for d in (first, last))  # local midnights
     ids = sorted((eid for eid, e in folded.items() if not e["deleted"] and lo <= starts[eid] < hi), key=starts.__getitem__)
@@ -422,7 +428,8 @@ def week(store: Store, day: Optional[dt.date] = None, week_starts: str = "monday
     for t in totals.values():
         rate = rates.get(t["client"])
         out_totals.append({**t, "hours": round(t["hours"], 2), "billable_hours": round(t["billable_hours"], 2),
-                           "rate": rate, "amount": _money(round(t["billable_hours"], 2), rate)})
+                           "rate": rate, "amount": _money(round(t["billable_hours"], 2), rate),
+                           "currency": currencies.get(t["client"])})
     return {"from": first.isoformat(), "to": (last - dt.timedelta(days=1)).isoformat(), "week_starts": week_starts,
             "entries": rows, "totals": sorted(out_totals, key=lambda t: (t["client"].lower(), t["project"].lower())),
             "hours": round(sum(e["hours"] for e in rows), 2),
@@ -430,7 +437,8 @@ def week(store: Store, day: Optional[dt.date] = None, week_starts: str = "monday
             "skipped_lines": bad}
 
 
-CSV_HEADER = ["date", "start", "end", "hours", "client", "project", "note", "billable", "rate", "amount"]
+CSV_HEADER = ["date", "start", "end", "hours", "client", "project", "note", "billable", "rate", "amount",
+              "currency"]
 
 
 def to_csv(view: dict) -> str:
@@ -438,6 +446,7 @@ def to_csv(view: dict) -> str:
     w = csv.writer(buf, lineterminator="\n")
     w.writerow(CSV_HEADER)
     rates = {t["client"]: t.get("rate") for t in view["totals"]}
+    currencies = {t["client"]: t.get("currency") for t in view["totals"]}
     for e in view["entries"]:
         start = _parse(e["start"])
         end = _parse(e["end"]) if e.get("end") else None
@@ -445,7 +454,8 @@ def to_csv(view: dict) -> str:
         rate = rates.get(e["client"])
         w.writerow([start.date().isoformat(), start.strftime("%H:%M"), end.strftime("%H:%M") if end else "running",
                     f"{hours:.2f}", e["client"], e["project"], e["note"], "yes" if e["billable"] else "no",
-                    "" if rate is None else rate, _money(hours, rate) if e["billable"] and rate is not None else ""])
+                    "" if rate is None else rate, _money(hours, rate) if e["billable"] and rate is not None else "",
+                    currencies.get(e["client"]) or ""])
     return buf.getvalue()
 
 

@@ -37,7 +37,35 @@ def test_start_stop_add_and_week_totals(tmp_path, tl):
     assert (internal["billable_hours"], internal["amount"]) == (0.0, None)
     rows = list(csv.reader(io.StringIO(tl.to_csv(w))))
     assert rows[0] == tl.CSV_HEADER
-    assert rows[1] == ["2026-11-09", "09:00", "10:30", "1.50", "Acme", "Site", "", "yes", "80.0", "120.00"]
+    assert rows[1] == ["2026-11-09", "09:00", "10:30", "1.50", "Acme", "Site", "", "yes", "80.0", "120.00", "EUR"]
+
+
+def test_a_currency_is_three_letters_stored_in_capitals(tmp_path, tl):
+    s = make_store(tmp_path)
+    tl.set_client(s, "Acme", 80, " usd ")
+    assert tl.clients(s) == [{"name": "Acme", "rate": 80.0, "currency": "USD"}]
+    for bad in ("dollars", "$", "U1D"):
+        with pytest.raises(tl.TimelogError) as err:
+            tl.set_client(s, "Acme", 90, bad)
+        assert "three letters" in str(err.value)
+    assert tl.clients(s)[0]["rate"] == 80.0
+
+
+def test_totals_and_the_csv_name_each_clients_currency(tmp_path, tl):
+    s = make_store(tmp_path)
+    tl.set_client(s, "Acme", 80, "USD")
+    tl.set_client(s, "Internal", None)
+    s.write_json("clients.json", {"clients": [*tl.clients(s), {"name": "Oldie", "rate": 50.0}]})  # a rate, no currency
+    for client in ("Acme", "Internal", "Oldie", "Walk-in"):
+        tl.apply_op(s, {"op": "add", "fields": {"client": client, "minutes": 60, "end": at(2).isoformat()}}, "user",
+                    now=at(3))
+    w = tl.week(s, now=at(4))
+    assert {t["client"]: (t["amount"], t["currency"]) for t in w["totals"]} == {
+        "Acme": ("80.00", "USD"), "Internal": (None, None), "Oldie": ("50.00", "EUR"), "Walk-in": (None, None)}
+    rows = list(csv.reader(io.StringIO(tl.to_csv(w))))
+    assert rows[0][-1] == "currency" and len(rows[0]) == 11
+    assert {r[4]: (r[9], r[10]) for r in rows[1:]} == {
+        "Acme": ("80.00", "USD"), "Internal": ("", ""), "Oldie": ("50.00", "EUR"), "Walk-in": ("", "")}
 
 
 def test_starting_stops_the_running_timer(tmp_path, tl):
@@ -298,6 +326,8 @@ def test_routes(tmp_path):
         assert body["results"][0]["applied"] is True
         status, body = api.timelog_export()
         assert body["filename"] == "timelog-2026-11-09.csv" and body["csv"].startswith("date,start,end")
+        assert body["csv"].splitlines()[0].endswith(",amount,currency") and body["csv"].splitlines()[1].endswith(",EUR")
+        assert api.timelog_get()[1]["week"]["totals"][0]["currency"] == "EUR"
         store.write_json("toolbox.json", {**sub("toolbox").load(store),
                                           "modules": {**sub("toolbox").load(store)["modules"],
                                                       "timelog": {"on": False}}})

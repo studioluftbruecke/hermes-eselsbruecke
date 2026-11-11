@@ -4,7 +4,37 @@
 import { atom, host } from '@hermes/plugin-sdk'
 
 export const ID = 'eselsbruecke'
+// This Desktop half's version, written in by the build (desktop/build/build.mjs); 'dev' in a bundle made without it.
+export const VERSION = typeof __ESB_VERSION__ === 'string' ? __ESB_VERSION__ : 'dev'
 export const PATH = '/eselsbruecke'
+
+/** -1, 0 or 1: two dotted versions by their numbers, so 0.10.0 is newer than 0.9.2. */
+export function compareVersions(a, b) {
+  const parts = v => String(v).split(/[.+-]/).map(n => parseInt(n, 10) || 0)
+  const [x, y] = [parts(a), parts(b)]
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0) ? -1 : 1
+  }
+  return 0
+}
+
+/** One line when the two halves are different versions, naming the side to update; else null.
+ *  Desktop loads its half from this computer and Hermes its half from the server, so an update of
+ *  one leaves the other behind. `server` is /health's version. */
+export function versionNote(server, desktop = VERSION) {
+  if (!server || !desktop || desktop === 'dev') return null
+  const order = compareVersions(desktop, server)
+  if (!order) return null
+  return `Eselsbrücke is ${desktop} on this computer and ${server} on your Hermes server. Update Eselsbrücke ${order < 0 ? 'on this computer' : 'on your Hermes server'}.`
+}
+
+/** The calendar day it is at `now` at the UTC offset an ISO time carries. The backend writes its times
+ *  in Hermes' zone, which this computer may not share, so "today" is read there. */
+export function dayAt(iso, now = Date.now()) {
+  const m = /([+-])(\d{2}):?(\d{2})$/.exec(String(iso || ''))
+  const minutes = m ? (m[1] === '-' ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3])) : 0
+  return new Date(now + minutes * 60000).toISOString().slice(0, 10)
+}
 
 let pluginCtx = null
 export const setCtx = ctx => {

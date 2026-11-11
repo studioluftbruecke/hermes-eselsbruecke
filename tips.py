@@ -1,9 +1,9 @@
-"""Productivity tips for pomodoro breaks, and the break card contract with UnblockBrücke (R26).
+"""Productivity tips for pomodoro breaks, and the break card contract with Unblockbrücke (R26).
 
 Built-in tips ship as `data/tips.json` (loaded at import); the user's own tips live in the toolbox
-file. `break_tip()` asks UnblockBrücke for a card when its tool `unblockbruecke_card` is registered:
+file. `break_tip()` asks Unblockbrücke for a card when its tool `unblockbruecke_card` is registered:
 `{"action": "draw", "context": "break"}` must answer `{"title": str, "text": str}` (JSON). Any error,
-a wrong shape or no answer falls back to a tip. This contract is Eselsbrücke's; UnblockBrücke adopts
+a wrong shape or no answer falls back to a tip. This contract is Eselsbrücke's; Unblockbrücke adopts
 it when that track is built.
 """
 from __future__ import annotations

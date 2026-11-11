@@ -1,6 +1,7 @@
 """Conversions for `eselsbruecke_convert` and the page's Python-side tools: time zones and Unix
-timestamps (zoneinfo), base64 and URL encoding, colours (hex, rgb, hsl, oklch, WCAG contrast) and cron
-expressions (croniter, a core Hermes dependency, plus our own wording).
+timestamps (zoneinfo; a zone is named by its tz name or by a city, see `places.py`), base64 and URL
+encoding, colours (hex, rgb, hsl, oklch, WCAG contrast) and cron expressions (croniter, a core Hermes
+dependency, plus our own wording).
 
 The Desktop half computes encode, colour and time zones in JavaScript as you type; both halves run
 `tests/fixtures/parity.json`, so their answers are the same. Rounding is half away from zero in both
@@ -15,7 +16,9 @@ import math
 import re
 import urllib.parse
 from typing import Optional
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import ZoneInfo
+
+from . import places
 
 
 class ConvertError(ValueError):
@@ -38,20 +41,35 @@ def _num(x: float) -> str:
 
 # --- time zones and timestamps ---------------------------------------------------------------------
 
+def place(name: str) -> tuple[str, Optional[str]]:
+    """The tz name behind what was typed, and the city's label when it was a city.
+
+    A name the tz database knows is taken as it is, so a zone name answers exactly as it always did;
+    anything else is looked up as a city."""
+    text = str(name).strip()
+    if places.zone_loads(text):
+        return text, None
+    hit = places.resolve(text)
+    if hit and places.zone_loads(hit["zone"]):
+        return hit["zone"], (hit["label"] if hit["zone"] != "UTC" else None)
+    raise ConvertError(f"unknown place or time zone {name!r} (use a city like Tokyo or a zone like Europe/Berlin)")
+
+
 def zone(name: str) -> ZoneInfo:
-    try:
-        return ZoneInfo(str(name).strip())
-    except (ZoneInfoNotFoundError, ValueError) as exc:
-        raise ConvertError(f"unknown time zone {name!r} (use IANA names like Europe/Berlin, America/New_York, UTC)") from exc
+    return ZoneInfo(place(name)[0])
 
 
 def _row(when: dt.datetime, name: str) -> dict:
-    local = when.astimezone(zone(name))
+    tz_name, label = place(name)
+    local = when.astimezone(ZoneInfo(tz_name))
     off = local.utcoffset() or dt.timedelta(0)
     mins = int(off.total_seconds() // 60)
     sign = "+" if mins >= 0 else "-"
-    return {"zone": name, "time": local.strftime("%Y-%m-%d %H:%M"), "weekday": local.strftime("%a"),
-            "offset": f"UTC{sign}{abs(mins) // 60:02d}:{abs(mins) % 60:02d}", "abbr": local.tzname()}
+    row = {"zone": tz_name, "time": local.strftime("%Y-%m-%d %H:%M"), "weekday": local.strftime("%a"),
+           "offset": f"UTC{sign}{abs(mins) // 60:02d}:{abs(mins) % 60:02d}", "abbr": local.tzname()}
+    if label:
+        row["place"] = label
+    return row
 
 
 def convert_time(time: str, from_zone: str, to_zones: list[str], now: Optional[dt.datetime] = None) -> dict:
@@ -361,7 +379,8 @@ def cron(expr: str, zone_name: str = "UTC", count: int = 5, now: Optional[dt.dat
         raise ConvertError("croniter is not installed") from exc
     text = (expr or "").strip()
     words = describe_cron(text)
-    tz = zone(zone_name)
+    tz_name, label = place(zone_name)
+    tz = ZoneInfo(tz_name)
     start = (now or dt.datetime.now(dt.timezone.utc)).astimezone(tz)
     try:
         it = croniter(MACROS.get(text.lower(), text), start)
@@ -369,4 +388,4 @@ def cron(expr: str, zone_name: str = "UTC", count: int = 5, now: Optional[dt.dat
         raise ConvertError(f"not a valid cron expression: {exc}") from exc
     count = max(1, min(int(count or 5), 20))
     runs = [it.get_next(dt.datetime).astimezone(tz).strftime("%Y-%m-%d %H:%M %a") for _ in range(count)]
-    return {"expression": text, "words": words, "zone": zone_name, "next": runs}
+    return {"expression": text, "words": words, "zone": tz_name, **({"place": label} if label else {}), "next": runs}

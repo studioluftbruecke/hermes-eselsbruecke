@@ -132,9 +132,17 @@ def test_parity_script_without_its_argument_says_how_to_run_it():
 
 # Desktop behaviour in node against a fake backend (tests/desktop_harness.mjs): the outbox, timer
 # errors, alerts and the hours label (outbox), the beside pane, palette rows and the regex worker
-# (surfaces). Each prints one JSON line { cases, failed, failures }.
+# (surfaces), the world clock's maths, places, smart paste and drafts (clock), the dashboard, chip and
+# settings (dashboard), the world clock, pad and time-log pages (tools). Each prints one JSON line
+# { cases, failed, failures }.
 @needs_node
-@pytest.mark.parametrize("name, minimum", [("test_desktop_outbox.mjs", 11), ("test_desktop_surfaces.mjs", 9)])
+@pytest.mark.parametrize("name, minimum", [
+    ("test_desktop_outbox.mjs", 11),
+    ("test_desktop_surfaces.mjs", 12),
+    ("test_desktop_clock.mjs", 9),
+    ("test_desktop_dashboard.mjs", 17),
+    ("test_desktop_tools.mjs", 19),
+])
 def test_desktop_behaviour(name, minimum):
     run = subprocess.run([NODE, str(ROOT / "tests" / name), str(BUILD / "node_modules")],
                          capture_output=True, text=True, timeout=300)
