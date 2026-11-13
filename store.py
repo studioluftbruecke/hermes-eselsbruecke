@@ -35,7 +35,7 @@ class StoreError(Exception):
 
 def namespace() -> str:
     """The folder name Hermes gives `ctx.state.data_dir` for this plugin, for code that runs without a
-    ctx (routes, the CLI, the alert tick). Hermes' rule restated, because its helper is private (X20):
+    ctx (routes, the CLI, the alert tick). Hermes' rule restated, because its helper is private:
     `agent-plugin-<slug>-<first 8 hex of sha256(name)>`, and the slug of "eselsbruecke" is the name.
     tests/test_release.py checks it against Hermes' own helper whenever Hermes is importable."""
     return f"agent-plugin-{PLUGIN}-{hashlib.sha256(PLUGIN.encode()).hexdigest()[:8]}"

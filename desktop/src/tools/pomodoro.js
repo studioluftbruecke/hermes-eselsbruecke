@@ -1,6 +1,6 @@
 // Pomodoro: the dial and phase bar computed from the timer record (works without the backend), work
 // and break following each other without a click, a countdown, "What did you finish?" on stop, the
-// 25/5 and 50/10 rhythms one click apart (D7), and a tip or an Unblockbrücke card in breaks.
+// 25/5 and 50/10 rhythms one click apart, and a tip or an Unblockbrücke card in breaks.
 import { useValue } from '@hermes/plugin-sdk'
 import { useState } from 'react'
 import { jsx } from 'react/jsx-runtime'

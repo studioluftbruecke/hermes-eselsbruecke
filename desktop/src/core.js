@@ -1,6 +1,6 @@
 // Eselsbrücke Desktop half: the backend door, connection state and small shared helpers.
 // Every call goes to this plugin's own routes (`ctx.rest`, `/api/plugins/eselsbruecke/...`) on the
-// user's Hermes backend; nothing here reaches any other host (PLAN constraint 5).
+// user's Hermes backend; nothing here reaches any other host.
 import { atom, host } from '@hermes/plugin-sdk'
 
 export const ID = 'eselsbruecke'
@@ -105,7 +105,7 @@ export const storage = {
   set: (key, value) => pluginCtx && pluginCtx.storage && pluginCtx.storage.set(key, value),
 }
 
-/** Every Desktop alert goes out twice (constraint 17): the in-app toast, always shown, and the OS
+/** Every Desktop alert goes out twice: the in-app toast, always shown, and the OS
  *  notification, which Desktop shows only while Hermes is in the background. */
 export function alertBoth(title, body, kind = 'info') {
   try {

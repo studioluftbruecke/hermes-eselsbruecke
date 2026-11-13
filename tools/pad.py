@@ -1,5 +1,5 @@
 """eselsbruecke_pad: add lines to today's pad when the user asks, and undo the agent's last addition.
-There is no read action on purpose (A2, R8): the agent sees the pad only through `@pad:`."""
+There is no read action on purpose: the agent sees the pad only through `@pad:`."""
 from __future__ import annotations
 
 from .. import pad

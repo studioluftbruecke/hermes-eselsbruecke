@@ -1,13 +1,14 @@
 // The status-bar chip: an icon while nothing runs, a ring and the minutes left for the pomodoro (not
-// seconds; constraint 1), a dot and the hours for the running time-log timer, and a small amber dot
+// seconds), a dot and the hours for the running time-log timer, and a small amber dot
 // while clicks wait in the outbox. The sentence is in the tooltip and in the popover, which has the
-// quick actions. The toolbox's layout says whether it shows at all (chip_visible) and what it shows
-// while something runs (chip: auto, pomodoro, timelog).
+// quick actions. The toolbox's layout says whether it shows at all (chip_visible, applied by
+// visibility.js, which registers and removes the status-bar item) and what it shows while something
+// runs (chip: auto, pomodoro, timelog).
 import { Codicon, Popover, PopoverContent, PopoverTrigger, useValue } from '@hermes/plugin-sdk'
-import { useEffect, useState } from 'react'
+import { Component, useState } from 'react'
 import { jsx } from 'react/jsx-runtime'
 
-import { $connection, storage } from './core.js'
+import { $connection, log, storage } from './core.js'
 import { $running, $tick, $timer, replayAndRefresh, timelogAction, timerAction } from './live.js'
 import { $outbox, discardOutboxHead, outboxStatus, retryOutbox } from './outbox.js'
 import { Style } from './style.js'
@@ -20,6 +21,9 @@ export function chipLayout(layout) {
   const l = layout || {}
   return { chip: l.chip === 'pomodoro' || l.chip === 'timelog' ? l.chip : 'auto', chip_visible: l.chip_visible !== false && l.chip !== 'off' }
 }
+
+/** Where the layout seen last is kept per profile (ctx.storage): it decides until the toolbox answers. */
+export const chipLayoutKey = profile => `chipLayout:${profile}`
 
 /** Minutes in at most three characters, so the chip stays narrow: "20m", and "2h" from 100 minutes on. */
 export const chipMinutes = minutes => (minutes < 100 ? `${minutes}m` : `${Math.round(minutes / 60)}h`)
@@ -83,6 +87,27 @@ export function OutboxNote({ count }) {
       h(Btn, { onClick: () => { discardOutboxHead(); replayAndRefresh() } }, 'Discard it')))
 }
 
+/** The chip's own error boundary: a status-bar data item has no Desktop ContribBoundary around it,
+ *  and a chip that throws must not take the status bar down. */
+export class Boundary extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { failed: false }
+  }
+
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+
+  componentDidCatch(error) {
+    log('The chip failed and is hidden until the plugin reloads', String(error))
+  }
+
+  render() {
+    return this.state.failed ? null : this.props.children
+  }
+}
+
 export function Chip({ onBeside }) {
   const t = useValue($timer)
   const running = useValue($running)
@@ -93,13 +118,9 @@ export function Chip({ onBeside }) {
   const profile = useProfile()
   const [open, setOpen] = useState(false)
   const loaded = tb.data && tb.data.toolbox ? tb.data.toolbox.layout : null
-  // The status bar paints before the toolbox answers. The layout seen last decides until then, so a
-  // chip the user has hidden does not show up at every start or while Hermes is unreachable.
-  const key = `chipLayout:${profile}`
-  useEffect(() => {
-    if (loaded) storage.set(key, chipLayout(loaded))
-  }, [key, loaded && loaded.chip, loaded && loaded.chip_visible])
-  const state = chipState({ timer: t, running, now, layout: loaded || storage.get(key, null), waiting: outbox.length, connection: conn })
+  // The status bar paints before the toolbox answers: the layout seen last (stored by visibility.js)
+  // decides until then.
+  const state = chipState({ timer: t, running, now, layout: loaded || storage.get(chipLayoutKey(profile), null), waiting: outbox.length, connection: conn })
   if (state.hidden) return null
   const s = t ? phaseAt(t, now) : null
   const pomo = s && !s.done

@@ -1,6 +1,6 @@
 // Time log: start and stop a billable timer per client and project, add time afterwards, edit a
 // finished entry, the week with totals and amounts in each client's currency, undo, CSV. Start, stop
-// and add go to the outbox without the backend (A16).
+// and add go to the outbox without the backend.
 import { useQuery, useQueryClient, useValue } from '@hermes/plugin-sdk'
 import { useState } from 'react'
 import { jsx } from 'react/jsx-runtime'

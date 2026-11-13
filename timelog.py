@@ -1,4 +1,4 @@
-"""The time log (A14, A16): billable timers per client and project, only ever appended.
+"""The time log: billable timers per client and project, only ever appended.
 
     timelog/<ISO year>-W<ISO week>.jsonl   one TimeOp per line, filed by the op's time:
         {"op_id", "op": start|stop|add|edit|delete|undo, "entry_id", "at", "by": user|agent,
@@ -9,7 +9,7 @@
 An entry is the fold of its ops in time order; an `undo` op reverts one named op (the agent's undo
 defaults to its own newest op, a click to the newest op). An `op_id` already stored is acknowledged
 and not written again, so an op replayed from the Desktop outbox lands once with its click time
-(A16). Every write is one appended, fsynced line; a truncated last line is skipped and counted.
+Every write is one appended, fsynced line; a truncated last line is skipped and counted.
 """
 from __future__ import annotations
 
@@ -18,11 +18,13 @@ import copy
 import csv
 import datetime as dt
 import io
+import logging
+import math
 import os
 import re
 import secrets
 import threading
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal, localcontext
 from typing import Any, Iterator, Optional
 
 from . import clock
@@ -34,6 +36,10 @@ OPS = ("start", "stop", "add", "edit", "delete", "undo")
 OUTBOX_OPS = ("start", "stop", "add")
 FIELDS = ("client", "project", "note", "start", "end", "billable")
 LONG_RUNNING_H = 10
+MAX_ID = 64
+MAX_RATE = 1e9
+MAX_MINUTES = 365 * 24 * 60
+log = logging.getLogger(__name__)
 
 
 class TimelogError(ValueError):
@@ -54,6 +60,69 @@ def _parse(value: Any) -> dt.datetime:
 
 def _iso(when: dt.datetime) -> str:
     return when.isoformat(timespec="seconds")
+
+
+def _id(body: dict, key: str, known) -> Optional[str]:
+    """An entry or op id from a request, or None when absent: text up to MAX_ID characters, or any id
+    in `known` (0.2.0 stored the agent's ids as sent, numbers and longer text too, and its page or
+    outbox may send such a number back)."""
+    value = body.get(key)
+    if value is None or value == "":
+        return None
+    if isinstance(value, (str, int, float)) and not isinstance(value, bool) and str(value) in known:
+        return str(value)
+    if not isinstance(value, str) or len(value) > MAX_ID:
+        raise TimelogError("invalid", f"{key} must be an id (text up to {MAX_ID} characters)")
+    return value
+
+
+_ID_KEYS = ("entry_id", "op_id", "undoes", "caused_by")
+
+
+def _text_ids(row: dict) -> dict:
+    """The row with every scalar id as text: 0.2.0 stored the agent's ids as sent (`entry_id: 5`)."""
+    fixed = {k: str(row[k]) for k in _ID_KEYS if isinstance(row.get(k), (int, float, bool))}
+    also = row.get("also_undoes")
+    if isinstance(also, list) and any(isinstance(v, (int, float, bool)) for v in also):
+        fixed["also_undoes"] = [str(v) if isinstance(v, (int, float, bool)) else v for v in also]
+    return {**row, **fixed} if fixed else row
+
+
+def _hashable(*values: Any) -> bool:
+    try:
+        for v in values:
+            hash(v)
+    except TypeError:
+        return False
+    return True
+
+
+def _usable_rate(value: Any) -> bool:
+    return (isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+            and 0 <= value < MAX_RATE)
+
+
+def _rate(value: Any) -> Optional[float]:
+    """A rate from a request: a number (or numeric text) from 0 to under MAX_RATE, or None."""
+    if value is None:
+        return None
+    try:
+        rate = float(value) if not isinstance(value, (bool, list, dict)) else None
+    except (TypeError, ValueError):
+        rate = None
+    if rate is None or not _usable_rate(rate):
+        raise TimelogError("invalid", "a rate is an amount per hour from 0 to under 1,000,000,000, like 80 or 80.5")
+    return rate
+
+
+def _minutes(value: Any) -> float:
+    try:
+        minutes = float(value) if not isinstance(value, (bool, list, dict)) else math.nan
+    except (TypeError, ValueError):
+        minutes = math.nan
+    if not (math.isfinite(minutes) and 0 < minutes <= MAX_MINUTES):
+        raise TimelogError("invalid", f"minutes must be a number above 0 and at most {MAX_MINUTES} (a year)")
+    return minutes
 
 
 def week_file(when: dt.datetime) -> str:
@@ -114,18 +183,22 @@ class _Log:
     def _add(self, name: str, rows: list[dict], first: int) -> set:
         touched: set = set()
         for i in range(first, len(rows)):
-            row = rows[i]
+            row = _text_ids(rows[i]) if isinstance(rows[i], dict) else rows[i]
             try:
                 key = (_parse(row.get("at")).timestamp(), name, i, row)
             except TimelogError:
                 self.bad_at += 1
                 continue
             eid = row.get("entry_id")
+            also = row.get("also_undoes")
+            if not _hashable(eid, row.get("op_id"), row.get("undoes"), *(also if isinstance(also, list) else ())) \
+                    or not isinstance(row.get("fields") or {}, dict):
+                self.bad_at += 1  # stored by an older version without these checks: skipped and counted
+                continue
             self.op_entry[row.get("op_id")] = eid
             self.by_entry.setdefault(eid, []).append(key)
             touched.add(eid)
             if row.get("op") == "undo":
-                also = row.get("also_undoes")
                 for victim in [row.get("undoes"), *(also if isinstance(also, list) else ())]:
                     self.undone.add(victim)
                     touched.add(self.op_entry.get(victim))
@@ -261,11 +334,13 @@ def apply_op(store: Store, body: dict, by: str, source: str = "page", now: Optio
     kind = body.get("op")
     if kind not in OPS:
         raise TimelogError("invalid", f"op must be one of {', '.join(OPS)}")
-    op_id = str(body.get("op_id") or ("s-" + secrets.token_hex(6)))[:64]
+    op_id = str(body.get("op_id") or ("s-" + secrets.token_hex(6)))[:MAX_ID]
     at = _parse(body["at"]) if body.get("at") else now
     if at > now + dt.timedelta(minutes=2):
         raise TimelogError("invalid", "at lies in the future")
     with store.lock(), _live(store) as log:
+        entry_id = _id(body, "entry_id", log.by_entry)
+        undoes = _id(body, "undoes", log.op_entry)
         if op_id in log.op_entry:
             return {"applied": False, "duplicate": True, "op_id": op_id}
         entries = log.entries
@@ -274,15 +349,18 @@ def apply_op(store: Store, body: dict, by: str, source: str = "page", now: Optio
         caused: list[dict] = []  # for an undo: the ops its target caused, reverted with it
         note: Optional[str] = None  # for an undo: why nothing was restarted
         if kind == "start":
+            if entry_id is not None and entry_id in log.by_entry:  # a start makes a new entry, never replaces one
+                raise TimelogError("entry_exists", f"entry {entry_id!r} exists already; a start makes a new entry "
+                                                   "(change an entry with edit)")
             fields = _validate_fields({**(body.get("fields") or {}), "start": (body.get("fields") or {}).get("start") or _iso(at)}, False)
             for e in entries.values():  # starting a timer stops the running one at the same moment
                 if not e["end"] and not e["deleted"]:
-                    extra.append({"op_id": op_id + ":stop-" + e["id"], "op": "stop", "entry_id": e["id"],
+                    extra.append({"op_id": f"{op_id}:stop-{e['id']}", "op": "stop", "entry_id": e["id"],
                                   "at": _iso(at), "by": by, "source": source, "caused_by": op_id})
-            op["entry_id"] = body.get("entry_id") or "e" + secrets.token_hex(5)
+            op["entry_id"] = entry_id or "e" + secrets.token_hex(5)
             op["fields"] = fields
         elif kind == "stop":
-            eid = body.get("entry_id") or next((e["id"] for e in entries.values() if not e["end"] and not e["deleted"]), None)
+            eid = entry_id or next((e["id"] for e in entries.values() if not e["end"] and not e["deleted"]), None)
             if not eid or eid not in entries or entries[eid]["deleted"]:
                 raise TimelogError("not_running", "no time-log timer is running")
             if entries[eid]["end"]:
@@ -290,18 +368,24 @@ def apply_op(store: Store, body: dict, by: str, source: str = "page", now: Optio
             op["entry_id"] = eid
             op["fields"] = {"end": _iso(at)}
         elif kind == "add":
-            f = body.get("fields") or {}
-            if f.get("minutes") and not f.get("start"):
+            if not isinstance(body.get("fields") or {}, dict):
+                raise TimelogError("invalid", "fields must be an object")
+            f = dict(body.get("fields") or {})
+            minutes = f.pop("minutes", None)
+            if minutes and not f.get("start"):
                 end = _parse(f["end"]) if f.get("end") else at
-                f = {**f, "start": _iso(end - dt.timedelta(minutes=float(f.pop("minutes")))), "end": _iso(end)}
-            f.pop("minutes", None)
+                try:
+                    start = end - dt.timedelta(minutes=_minutes(minutes))
+                except OverflowError as exc:
+                    raise TimelogError("invalid", "that start would fall before year 1") from exc
+                f = {**f, "start": _iso(start), "end": _iso(end)}
             fields = _validate_fields(f, False)
             if not fields.get("start") or not fields.get("end"):
                 raise TimelogError("invalid", "add needs start and end (or minutes)")
             op["entry_id"] = "e" + secrets.token_hex(5)
             op["fields"] = fields
         elif kind in ("edit", "delete"):
-            eid = body.get("entry_id")
+            eid = entry_id
             if eid not in entries or entries[eid]["deleted"]:
                 raise TimelogError("unknown_entry", f"no entry {eid!r}")
             op["entry_id"] = eid
@@ -312,9 +396,14 @@ def apply_op(store: Store, body: dict, by: str, source: str = "page", now: Optio
                 merged = {**entries[eid], **fields}
                 if merged.get("end") and _parse(merged["end"]) < _parse(merged["start"]):
                     raise TimelogError("invalid", "end lies before start")
+                others = [e for e in entries.values() if not e["end"] and not e["deleted"] and e["id"] != eid]
+                if not merged.get("end") and others:  # clearing end reopens the entry: one timer at a time
+                    names = ", ".join(sorted({e.get("client") or e["id"] for e in others}))
+                    raise TimelogError("running", f"{names} is running now; stop it before reopening this entry "
+                                                  "(only one timer runs at a time)")
                 op["fields"] = fields
         elif kind == "undo":
-            target = body.get("undoes")
+            target = undoes
             undone, ops = log.undone, log.ops()
             # an op another op caused (a start's auto-stop) is undone with its cause, never alone
             candidates = [o for o in ops if o.get("op") != "undo" and o.get("op_id") not in undone
@@ -330,7 +419,7 @@ def apply_op(store: Store, body: dict, by: str, source: str = "page", now: Optio
             op["entry_id"] = victim.get("entry_id")
             op["reverted"] = copy.deepcopy({k: victim.get(k) for k in ("op", "fields", "at", "by")})
             caused = [o for o in ops if o.get("caused_by") == victim["op_id"]]
-            # restart what the target stopped only while no other timer runs now (N2): a newer start
+            # restart what the target stopped only while no other timer runs now: a newer start
             # the undo does not revert would otherwise leave two timers running
             others = [e for e in entries.values() if not e["end"] and not e["deleted"]
                       and e["id"] != victim.get("entry_id")]
@@ -379,8 +468,22 @@ def week_range(day: dt.date, week_starts: str = "monday") -> tuple[dt.date, dt.d
     return first, first + dt.timedelta(days=7)
 
 
+RATE_IGNORED = "the stored rate is not a usable amount and is ignored; set the rate again"
+
+
 def clients(store: Store) -> list[dict]:
-    return (store.read_json(CLIENTS) or {}).get("clients") or []
+    """The clients; a stored rate that is no usable amount (written before rates were checked) is
+    left out and the row carries a note, so the week view and the export still answer."""
+    rows = (store.read_json(CLIENTS) or {}).get("clients") or []
+    out = []
+    for c in rows if isinstance(rows, list) else []:
+        if not isinstance(c, dict) or not isinstance(c.get("name"), str):
+            continue
+        if c.get("rate") is not None and not _usable_rate(c["rate"]):
+            c = {k: v for k, v in c.items() if k not in ("rate", "currency")}
+            c["note"] = RATE_IGNORED
+        out.append(c)
+    return out
 
 
 def set_client(store: Store, name: str, rate: Optional[float], currency: str = "EUR") -> list[dict]:
@@ -390,9 +493,10 @@ def set_client(store: Store, name: str, rate: Optional[float], currency: str = "
     currency = str(currency or "EUR").strip().upper()
     if not re.fullmatch(r"[A-Z]{3}", currency):
         raise TimelogError("invalid", "a currency is three letters, like EUR or USD")
+    rate = _rate(rate)
     with store.lock():
-        rows = [c for c in clients(store) if c.get("name") != name]
-        rows.append({"name": name, **({"rate": float(rate), "currency": currency} if rate is not None else {})})
+        rows = [{k: v for k, v in c.items() if k != "note"} for c in clients(store) if c.get("name") != name]
+        rows.append({"name": name, **({"rate": rate, "currency": currency} if rate is not None else {})})
         store.write_json(CLIENTS, {"clients": sorted(rows, key=lambda c: c["name"].lower())})
     return clients(store)
 
@@ -400,7 +504,9 @@ def set_client(store: Store, name: str, rate: Optional[float], currency: str = "
 def _money(hours: float, rate: Optional[float]) -> Optional[str]:
     if rate is None:
         return None
-    return str((Decimal(str(hours)) * Decimal(str(rate))).quantize(Decimal("0.01"), ROUND_HALF_UP))
+    with localcontext() as ctx:
+        ctx.prec = 40  # a Decimal context belongs to one thread; set it per call
+        return str((Decimal(str(hours)) * Decimal(str(rate))).quantize(Decimal("0.01"), ROUND_HALF_UP))
 
 
 def week(store: Store, day: Optional[dt.date] = None, week_starts: str = "monday",
@@ -441,6 +547,12 @@ CSV_HEADER = ["date", "start", "end", "hours", "client", "project", "note", "bil
               "currency"]
 
 
+def _cell(text: Any) -> str:
+    """A text cell a spreadsheet will not run as a formula (a leading = + - @ tab or CR gets a ')."""
+    text = str(text or "")
+    return "'" + text if text[:1] in ("=", "+", "-", "@", "\t", "\r") else text
+
+
 def to_csv(view: dict) -> str:
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator="\n")
@@ -453,14 +565,14 @@ def to_csv(view: dict) -> str:
         hours = round(e["hours"], 2)
         rate = rates.get(e["client"])
         w.writerow([start.date().isoformat(), start.strftime("%H:%M"), end.strftime("%H:%M") if end else "running",
-                    f"{hours:.2f}", e["client"], e["project"], e["note"], "yes" if e["billable"] else "no",
+                    f"{hours:.2f}", _cell(e["client"]), _cell(e["project"]), _cell(e["note"]), "yes" if e["billable"] else "no",
                     "" if rate is None else rate, _money(hours, rate) if e["billable"] and rate is not None else "",
                     currencies.get(e["client"]) or ""])
     return buf.getvalue()
 
 
 def replay(store: Store, ops: list[dict], now: Optional[dt.datetime] = None) -> list[dict]:
-    """The outbox (A16): start, stop and add ops with client op_id and at, in order. Each answers
+    """The outbox: start, stop and add ops with client op_id and at, in order. Each answers
     applied, duplicate or an error; an error does not stop the rest."""
     results = []
     for body in ops if isinstance(ops, list) else []:
@@ -473,4 +585,8 @@ def replay(store: Store, ops: list[dict], now: Optional[dt.datetime] = None) -> 
             results.append({"op_id": body["op_id"], "applied": out["applied"], "duplicate": out.get("duplicate", False)})
         except TimelogError as exc:
             results.append({"op_id": body["op_id"], "error": exc.code, "message": str(exc)})
+        except Exception as exc:  # one op the checks above missed is refused alone; the rest still replay
+            log.warning("time-log outbox op %r refused: %s", body.get("op_id"), type(exc).__name__)
+            results.append({"op_id": body["op_id"], "error": "invalid",
+                            "message": f"this op could not be applied ({type(exc).__name__})"})
     return results

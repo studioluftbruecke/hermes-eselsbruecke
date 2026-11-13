@@ -1,4 +1,4 @@
-// Convert and design tools, all in the Desktop (they answer per keystroke; constraint 8) and all
+// Convert and design tools, all in the Desktop (they answer per keystroke) and all
 // working without the backend: encode/decode, UUIDs and passwords, colour (with WCAG contrast and,
 // where Desktop allows it, a screen picker), QR codes. Time zones live in tools/clock.js.
 import { useEffect, useMemo, useState } from 'react'

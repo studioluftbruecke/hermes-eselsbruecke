@@ -3,7 +3,7 @@
 Read by the toolbox file's validation, the settings page and the Toolbox page (through `/toolbox`),
 `check_fn` and every agent handler. Adding a tool is one MODULES row plus its engine. Every agent
 action belongs to exactly one module (`TOOLS[...]["actions"]`); a tool is hidden from the agent only
-when all its modules are off, and its handler refuses an action whose module is off (constraint 16).
+when all its modules are off, and its handler refuses an action whose module is off.
 `None` as a module means the action is the toolbox's own and never switched off.
 """
 from __future__ import annotations

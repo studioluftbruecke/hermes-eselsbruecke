@@ -1,8 +1,8 @@
-// Vendored packages as lazy factories (constraint 9, R21). Desktop evaluates every discovered
+// Vendored packages as lazy factories. Desktop evaluates every discovered
 // plugin.js at start under a 10 s deadline, before it checks whether the plugin is on, so nothing
 // heavy runs at module top level: each package is its CommonJS build, `require`d on first use (esbuild
 // wraps it in a function that runs once). The o200k ranks are not in the bundle; the page loads them
-// from the plugin's own route GET /data/o200k on first use (A15).
+// from the plugin's own route GET /data/o200k on first use.
 
 let prettierCache = null
 /** Prettier with the plugins the formatter needs (Markdown, TypeScript, JavaScript, CSS, HTML, and

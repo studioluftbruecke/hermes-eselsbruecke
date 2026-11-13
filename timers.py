@@ -8,7 +8,7 @@ clock; nothing ticks. Stdlib only (the alert tick loads this file by path, witho
 
 The current phase is `phase_at(timer, now)`; a phase end is `due_events(timer, since, now)` with the key
 `<timer id>:<phase index>`. Ops carry a client `op_id` and `at` (the click time) so an op replayed from
-the Desktop outbox (A16) is applied once and keeps its time.
+the Desktop outbox is applied once and keeps its time.
 """
 from __future__ import annotations
 

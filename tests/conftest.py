@@ -1,6 +1,7 @@
-"""Make the helpers in esb_fakes.py importable by name (pytest runs with --import-mode=importlib), and
-make every test an attended chat unless it says otherwise: outside Hermes the one-shot marker cannot be
-read, which the plugin treats as unattended (fail closed)."""
+"""Make the helpers in esb_fakes.py importable by name (pytest runs with --import-mode=importlib),
+make every test an attended chat unless it says otherwise (outside Hermes the one-shot marker cannot
+be read, which the plugin treats as unattended), and keep the real `hermes` command out of tests: a
+route that would run it gets a BridgeError, as on a host without Hermes on PATH."""
 import pathlib
 import sys
 
@@ -15,6 +16,11 @@ def attended(monkeypatch):
 
     bridge = sub("hermes_bridge")
     monkeypatch.setattr(bridge, "_finite_turn", lambda: False)
+
+    def no_hermes():
+        raise bridge.BridgeError("the `hermes` command is not on PATH")
+
+    monkeypatch.setattr(bridge, "_hermes_command", no_hermes)
     monkeypatch.delenv("HERMES_PLUGIN_HOST_PROCESS", raising=False)
     monkeypatch.delenv("HERMES_CRON_SESSION", raising=False)
     monkeypatch.delenv("HERMES_SINGLE_QUERY_SESSION", raising=False)

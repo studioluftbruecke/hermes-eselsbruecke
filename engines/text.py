@@ -4,7 +4,7 @@ regex test, and counts with Hermes' own token estimate.
 The Regex tester page uses JavaScript `RegExp` (the flavour web developers write); this module tests
 Python `re` and names its flavour in every answer. The token estimate is Hermes' own rule
 (`agent/model_metadata.py` `estimate_tokens_rough`): ceil(UTF-8 bytes / 4), with each CJK character
-one token; it is labelled as an estimate. The exact o200k count lives on the Desktop page (D2).
+one token; it is labelled as an estimate. The exact o200k count lives on the Desktop page.
 """
 from __future__ import annotations
 
@@ -93,6 +93,8 @@ def diff(left: str, right: str, context: int = 3) -> dict:
 
 
 FLAG_MAP = {"i": re.IGNORECASE, "m": re.MULTILINE, "s": re.DOTALL, "x": re.VERBOSE}
+MATCH_TEXT_BUDGET = 50_000  # characters of match and group text in one answer
+MATCH_PIECE = 2_000  # characters of one match or group text
 
 
 def regex(pattern: str, text: str, flags: str = "", timeout_s: float = 2.0) -> dict:
@@ -113,7 +115,8 @@ def regex(pattern: str, text: str, flags: str = "", timeout_s: float = 2.0) -> d
     except re.error as exc:
         return {"flavour": "python re", "valid": False, "error": str(exc),
                 "position": getattr(exc, "pos", None)}
-    payload = json.dumps({"p": pattern, "t": text, "f": bits, "max": MAX_MATCHES})
+    payload = json.dumps({"p": pattern, "t": text, "f": bits, "max": MAX_MATCHES, "budget": MATCH_TEXT_BUDGET,
+                          "piece": MATCH_PIECE})
     try:
         with tempfile.TemporaryDirectory(prefix="esb-rx-") as cwd:
             done = subprocess.run([sys.executable, "-I", "-S", "-c", _CHILD], input=payload, capture_output=True,
@@ -124,7 +127,7 @@ def regex(pattern: str, text: str, flags: str = "", timeout_s: float = 2.0) -> d
         raise TextError("the regex test failed: " + (done.stderr.strip().splitlines() or ["no output"])[-1])
     result = json.loads(done.stdout)
     return {"flavour": "python re", "valid": True, "count": len(result["matches"]), "truncated": result["truncated"],
-            "matches": result["matches"],
+            "clipped": result["clipped"], "matches": result["matches"],
             "note": "Python re. The Regex tester page uses JavaScript RegExp; lookbehind, named groups "
                     "((?P<n>...) here, (?<n>...) there) and flags differ."}
 
@@ -134,14 +137,22 @@ import json, re, resource, sys
 resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 a = json.loads(sys.stdin.read())
 rx = re.compile(a["p"], a["f"])
-out, trunc = [], False
+out, trunc, left, clipped = [], False, a["budget"], False
+def cut(s):
+    global left, clipped
+    if s is None:
+        return s
+    if len(s) > a["piece"]:
+        s, clipped = s[:a["piece"]], True
+    left -= len(s)
+    return s
 for m in rx.finditer(a["t"]):
-    if len(out) >= a["max"]:
+    if len(out) >= a["max"] or left <= 0:
         trunc = True
         break
-    out.append({"match": m.group(0), "start": m.start(), "end": m.end(), "groups": list(m.groups()),
-                "named": m.groupdict()})
-sys.stdout.write(json.dumps({"matches": out, "truncated": trunc}))
+    out.append({"match": cut(m.group(0)), "start": m.start(), "end": m.end(), "groups": [cut(g) for g in m.groups()],
+                "named": {k: cut(v) for k, v in m.groupdict().items()}})
+sys.stdout.write(json.dumps({"matches": out, "truncated": trunc, "clipped": clipped}))
 """
 
 

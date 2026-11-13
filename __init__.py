@@ -3,7 +3,7 @@
 `register(ctx)` adds the agent tools listed in `REGISTERED` (one row each in `registry.TOOLS`), each
 with a `check_fn` that hides it once every tool behind it is switched off, and the bundled skill.
 Every handler runs through `env.run_tool`, which refuses a switched-off tool's actions in a running
-session too (constraint 16). State lives in `ctx.state.data_dir`; the dashboard routes
+session too. State lives in `ctx.state.data_dir`; the dashboard routes
 (`dashboard/plugin_api.py`) compute the same folder per call.
 
 Sibling modules load lazily: pytest imports this file on its own, and the package name differs
@@ -21,7 +21,7 @@ PLUGIN = "eselsbruecke"
 TOOLSET = "eselsbruecke"
 SKILL_NAME = "toolbox"
 
-# Agent tools registered by this version, in registry order. Each milestone adds its tools here and
+# Agent tools registered by this version, in registry order. Each new tool is added here and
 # to plugin.yaml provides_tools together.
 REGISTERED = ("eselsbruecke_toolbox", "eselsbruecke_pad", "eselsbruecke_timer", "eselsbruecke_timelog",
               "eselsbruecke_calc", "eselsbruecke_format",
@@ -171,8 +171,8 @@ def doctor_report(store, alerts=None) -> dict:
 
 
 def _register_reference(ctx, store) -> None:
-    """`@pad:` (M3). Skipped in a plugin host child: there one process would serve the first
-    profile's pad to every profile (constraint 12)."""
+    """`@pad:`. Skipped in a plugin host child: there one process would serve the first
+    profile's pad to every profile."""
     import os
 
     if os.environ.get("HERMES_PLUGIN_HOST_PROCESS") == "1":

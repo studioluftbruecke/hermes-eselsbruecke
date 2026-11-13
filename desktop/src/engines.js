@@ -1,4 +1,4 @@
-// The engines that run in the Desktop because they answer per keystroke or drag (constraint 8):
+// The engines that run in the Desktop because they answer per keystroke or drag:
 // colour, time zones and timestamps, encode/decode, counts, regex (JavaScript RegExp), generators.
 // Each equals its Python twin on tests/fixtures/parity.json (tests/test_desktop_parity.mjs), with one
 // stated difference: a zone's abbreviation comes from Intl and can read "GMT+9" where Python's zoneinfo

@@ -219,7 +219,7 @@ def test_agent_undo_of_its_start_restarts_the_entry_it_stopped(tmp_path):
 
 
 def test_agent_undo_never_restarts_while_another_timer_runs(tmp_path):
-    # N2: the agent starts B (stops A), the user starts C (stops B); undoing B must not restart A beside C
+    # the agent starts B (stops A), the user starts C (stops B); undoing B must not restart A beside C
     ctx = FakeCtx(tmp_path / "data")
     load_plugin().register(ctx)
     set_clock(at(0))

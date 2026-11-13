@@ -1,7 +1,7 @@
 // The Desktop surfaces against a fake backend (tests/desktop_harness.mjs): "Open beside chat" twice and
-// the keybind after it (X15), the pane closed on dispose without clearing the setting, the "start a
-// pomodoro" palette row only while the pomodoro is on (X14), and the Regex tester's worker with its
-// time limit (X13). The worker runs as a node worker thread fed from the same Blob URL Desktop uses.
+// the keybind after it, the pane closed on dispose without clearing the setting, the "start a
+// pomodoro" palette row only while the pomodoro is on, and the Regex tester's worker with its
+// time limit. The worker runs as a node worker thread fed from the same Blob URL Desktop uses.
 // Run by tests/test_desktop_build.py: node test_desktop_surfaces.mjs <desktop/build/node_modules>
 // Prints one JSON line { cases, failed, failures }; exit 1 on a failure.
 import assert from 'assert'
@@ -42,9 +42,12 @@ async function registered() {
   return env
 }
 
-await t.test('X15: a second "Open beside chat" keeps the pane and the setting', async () => {
+// The chip is a status-bar data item whose render wraps the Chip in the plugin's error boundary.
+const chipOnBeside = contributions => contributions.find(c => c.id === 'chip').data.render().props.children.props.onBeside
+
+await t.test('a second "Open beside chat" keeps the pane and the setting', async () => {
   const { M, store, contributions } = await registered()
-  const openBeside = contributions.find(c => c.id === 'chip').render().props.onBeside
+  const openBeside = chipOnBeside(contributions)
   openBeside()
   openBeside()
   assert.strictEqual(store.get('openBeside'), 'true', 'the setting was cleared by the second open')
@@ -59,22 +62,22 @@ await t.test('X15: a second "Open beside chat" keeps the pane and the setting', 
   assert.ok(M.host.panes.has('eselsbruecke-beside'), 'the pane is gone')
 })
 
-await t.test('X15: closing the pane clears the setting; disposing the plugin closes it and keeps it', async () => {
+await t.test('closing the pane clears the setting; disposing the plugin closes it and keeps it', async () => {
   const { M, store, contributions, disposers } = await registered()
-  const openBeside = contributions.find(c => c.id === 'chip').render().props.onBeside
+  const openBeside = chipOnBeside(contributions)
   openBeside()
   assert.ok(disposers.length, 'no ctx.onDispose was registered')
   disposers.forEach(fn => fn())
   assert.ok(!M.host.panes.has('eselsbruecke-beside'), 'the pane outlived the plugin')
   assert.strictEqual(store.get('openBeside'), 'true', 'a disable or reload cleared the user setting')
   const again = await registered()
-  const open2 = again.contributions.find(c => c.id === 'chip').render().props.onBeside
+  const open2 = chipOnBeside(again.contributions)
   open2()
   again.M.host.panes.get('eselsbruecke-beside').close() // the user closes the tab
   assert.strictEqual(again.store.get('openBeside'), 'false')
 })
 
-await t.test('X14: the "start a pomodoro" palette row exists only while the pomodoro is on', async () => {
+await t.test('the "start a pomodoro" palette row exists only while the pomodoro is on', async () => {
   const on = await registered()
   assert.ok(on.contributions.some(c => c.id === 'pomodoro-start'), 'missing while on')
   const env = await fresh(file)
@@ -84,7 +87,7 @@ await t.test('X14: the "start a pomodoro" palette row exists only while the pomo
   assert.ok(!env.contributions.some(c => c.id === 'pomodoro-start'), 'registered while the pomodoro is off')
 })
 
-await t.test('X13: a catastrophic pattern is stopped by the time limit and the renderer stays free', async () => {
+await t.test('a catastrophic pattern is stopped by the time limit and the renderer stays free', async () => {
   const { M } = await fresh(file)
   assert.strictEqual(typeof M.regexRun.runRegex, 'function', 'regex_run.js runRegex is missing')
   let beats = 0
@@ -99,7 +102,7 @@ await t.test('X13: a catastrophic pattern is stopped by the time limit and the r
   assert.ok(beats >= 5, `the main thread was blocked (${beats} beats in ${ms} ms)`)
 })
 
-await t.test('X13: the worker answers like the engine, errors included', async () => {
+await t.test('the worker answers like the engine, errors included', async () => {
   const { M } = await fresh(file)
   const good = await M.regexRun.runRegex('(\\d{4})-(\\d{2})', 'on 2026-11 and 2027-01', 'g')
   assert.deepStrictEqual(good, M.engines.regex('(\\d{4})-(\\d{2})', 'on 2026-11 and 2027-01', 'g'))
@@ -108,7 +111,7 @@ await t.test('X13: the worker answers like the engine, errors included', async (
   assert.match(bad.error, /Invalid regular expression/)
 })
 
-await t.test('X13: a newer run supersedes a stuck one', async () => {
+await t.test('a newer run supersedes a stuck one', async () => {
   const { M } = await fresh(file)
   const slow = M.regexRun.runRegex('(a+)+$', `${'a'.repeat(28)}!`, '', { timeoutMs: 5000 })
   await tick(50)

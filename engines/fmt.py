@@ -1,9 +1,9 @@
 """JSON and YAML formatting and conversion for `eselsbruecke_format` and the page's formatter (one
-engine for both, constraint 8). JSON uses the stdlib; YAML uses ruamel.yaml, a core Hermes
+engine for both). JSON uses the stdlib; YAML uses ruamel.yaml, a core Hermes
 dependency. Parse errors carry line and column (1-based).
 
 Markdown, TypeScript, JavaScript, CSS and HTML are formatted by Prettier inside the Desktop page;
-this engine answers them with `not_here` and says where they are (D2 recommendation b).
+this engine answers them with `not_here` and says where they are.
 """
 from __future__ import annotations
 
@@ -66,7 +66,7 @@ def _plain(data: Any) -> Any:
     """ruamel's round-trip types to plain JSON types (keeps order).
 
     YAML aliases share one loaded node, and JSON has no references, so every alias is written out in
-    full. A 333-byte alias bomb used to become 25.6 MB in 2.6 s (X12). Each shared node (a container, or
+    full. A 333-byte alias bomb used to become 25.6 MB in 2.6 s. Each shared node (a container, or
     a string over 64 characters; shorter ones may be interned by Python anyway) is converted once; every
     later reference to it adds its size (values plus string characters) to a budget, and past
     MAX_ALIAS_EXPANSION the conversion stops. A container that contains itself is refused."""
@@ -125,7 +125,7 @@ def _check(text: Any) -> str:
 
 
 def _indent(indent: Any) -> int:
-    """0 means compact JSON; a request can ask for at most MAX_INDENT spaces (X12: 100000 was accepted)."""
+    """0 means compact JSON; a request can ask for at most MAX_INDENT spaces (100000 was once accepted)."""
     if isinstance(indent, bool) or not isinstance(indent, int) or not 0 <= indent <= MAX_INDENT:
         raise FormatError(f"indent must be a whole number from 0 to {MAX_INDENT}")
     return indent

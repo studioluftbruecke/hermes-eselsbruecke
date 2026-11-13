@@ -1,4 +1,4 @@
-"""Productivity tips for pomodoro breaks, and the break card contract with Unblockbrücke (R26).
+"""Productivity tips for pomodoro breaks, and the break card contract with Unblockbrücke.
 
 Built-in tips ship as `data/tips.json` (loaded at import); the user's own tips live in the toolbox
 file. `break_tip()` asks Unblockbrücke for a card when its tool `unblockbruecke_card` is registered:

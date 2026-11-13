@@ -9,7 +9,8 @@ SCHEMA = {
     "name": "eselsbruecke_timelog",
     "description": (
         "The user's billable time log (append-only; every change you make carries your name and can be undone). "
-        "action=start {client, project?, note?, billable?: true} starts a timer (a running one stops); stop; "
+        "action=start {client, project?, note?, billable?: true} starts a timer as a new entry (a running one "
+        "stops); stop; "
         "add {client, project?, note?, start and end (ISO) or minutes}; edit {entry_id, fields: {client, project, "
         "note, start, end, billable}}; delete {entry_id}; undo reverts your newest change (undoing a start also "
         "restarts the timer it stopped, unless another timer runs now; `restarted` lists it, `note` says why "

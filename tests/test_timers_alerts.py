@@ -163,7 +163,7 @@ def test_tick_reminders(tmp_path, tm):
 
 
 def test_tick_reminders_with_days_written_ahead(tmp_path, tm):
-    """X3c: three future day files used to push today's file out of the tick's window."""
+    """Three future day files used to push today's file out of the tick's window."""
     tick, pad = sub("alerts_tick"), sub("pad")
     s = home_store(tmp_path)
     s.write_json("toolbox.json", {**sub("toolbox").default_doc(first_run=False), "alerts": {"while_closed": True}})
@@ -196,7 +196,7 @@ def test_script_runs_the_tick_and_survives_corrupt_input(tmp_path, tm):
 
 
 def test_script_keeps_only_the_newest_tick_errors(tmp_path, tm):
-    """X17: a persistent error appended about 1.7 KB a minute without end; the newest 20 rows stay, and the
+    """A persistent error appended about 1.7 KB a minute without end; the newest 20 rows stay, and the
     newest error is what the doctor and /alerts show."""
     alerts = sub("alerts")
     s, path = _script(tmp_path, tm)
@@ -268,6 +268,21 @@ def test_reconcile_creates_one_job_and_removes_it_with_the_script(tmp_path):
     assert [j["name"] for j in cron.jobs] == ["someone-else"]
 
 
+def test_a_failed_job_list_creates_nothing(tmp_path):
+    alerts = sub("alerts")
+    s = home_store(tmp_path)
+    s.write_json("toolbox.json", {**sub("toolbox").default_doc(first_run=False), "alerts": {"while_closed": True}})
+    calls = []
+
+    def failing(tool, args):
+        calls.append(args["action"])
+        return {"success": False, "error": "the scheduler is busy"} if args["action"] == "list" else {"success": True}
+
+    with pytest.raises(RuntimeError, match="busy"):
+        alerts.reconcile(s, failing)
+    assert calls == ["list"]
+
+
 def test_toolbox_save_runs_reconcile_through_the_turns_ctx(tmp_path):
     ctx = FakeCtx(home_store(tmp_path).root)
     load_plugin().register(ctx)
@@ -294,7 +309,7 @@ def test_break_card_contract_and_fallbacks():
 
 
 def test_break_tip_for_one_break_is_the_same_in_every_process(tmp_path):
-    """S4 (PR #73 review): the seed came from hash(), which Python salts per process, so the page, the
+    """The seed came from hash(), which Python salts per process, so the page, the
     agent and the alert job showed different tips for the same break."""
     code = ("import pathlib, sys; sys.path.insert(0, sys.argv[1]); from esb_fakes import make_store, sub;"
             "s = make_store(pathlib.Path(sys.argv[2]));"
@@ -328,3 +343,108 @@ def test_timer_tool_and_routes(tmp_path):
         assert api.tips_get()[1]["tips"][0]["source"] == "builtin"
     finally:
         api.set_store_factory(None)
+
+
+def test_one_unblockbruecke_card_per_break_however_often_the_page_polls(tmp_path, monkeypatch):
+    api, bridge = sub("api"), sub("hermes_bridge")
+    store = make_store(tmp_path)
+    api.set_store_factory(lambda: store)
+    clock = set_clock(T0)
+    draws = []
+    monkeypatch.setattr(bridge, "has_tool", lambda name: name == "unblockbruecke_card")
+    monkeypatch.setattr(bridge, "dispatch", lambda tool, args, ctx=None: (
+        draws.append(tool) or {"title": f"card {len(draws)}", "text": "t"}) if tool == "unblockbruecke_card" else {})
+    try:
+        assert api.timer_post({"op": "start", "kind": "pomodoro"})[0] == 200
+        clock.when = at(26)  # the first short break; the page polls every 30 s
+        titles = set()
+        for _ in range(10):
+            status, body = api.timer_get()
+            titles.add(body["tip"]["title"])
+            clock.advance(seconds=20)
+        assert (len(draws), titles) == (1, {"card 1"})
+        clock.when = at(57)  # the second break draws its own card
+        assert api.timer_get()[1]["tip"]["title"] == "card 2" and len(draws) == 2
+        clock.when = at(40)  # work time: no tip, no draw
+        assert "tip" not in api.timer_get()[1] and len(draws) == 2
+    finally:
+        api.set_store_factory(None)
+
+
+@pytest.mark.parametrize("plugins,silent", [
+    ("enabled: []\n  disabled: [eselsbruecke]", True),
+    ("enabled: [other]", True),
+    ("enabled: [eselsbruecke]\n  disabled: [eselsbruecke]", True),
+    ("enabled: [eselsbruecke]", False),
+])
+def test_tick_stays_silent_while_the_plugin_is_disabled_and_says_so_once(tmp_path, plugins, silent):
+    tick, pad, tb = sub("alerts_tick"), sub("pad"), sub("toolbox")
+    s = home_store(tmp_path)
+    (tmp_path / "home").mkdir(exist_ok=True)
+    (tmp_path / "home" / "config.yaml").write_text(f"plugins:\n  {plugins}\n", encoding="utf-8")
+    doc = tb.load(s)
+    doc["alerts"]["while_closed"] = True
+    tb.save(s, doc, "user")
+    set_clock(at(0))
+    pad.add_lines(s, [{"text": "call the bank", "kind": "reminder", "remind_at": "10:02"}], "user")
+    ticks = [tick.tick(s.root, ROOT, "Europe/Berlin", now=at(m)) for m in (1, 2.5, 3.5)]
+    if silent:
+        assert len(ticks[0]) == 1 and "disabled" in ticks[0][0] and "hermes cron remove" in ticks[0][0], ticks
+        assert ticks[1:] == [[], []]
+        assert not (s.root / "alerts_sent.jsonl").exists()
+    else:
+        assert ticks == [[], ["Eselsbrücke reminder: call the bank"], []]
+
+
+def _tick_with_config(tmp_path, config_text):
+    tick, pad, tb = sub("alerts_tick"), sub("pad"), sub("toolbox")
+    s = home_store(tmp_path)
+    (tmp_path / "home").mkdir(exist_ok=True)
+    if config_text is not None:
+        (tmp_path / "home" / "config.yaml").write_text(config_text, encoding="utf-8")
+    doc = tb.load(s)
+    doc["alerts"]["while_closed"] = True
+    tb.save(s, doc, "user")
+    set_clock(at(0))
+    pad.add_lines(s, [{"text": "call the bank", "kind": "reminder", "remind_at": "10:02"}], "user")
+    return [tick.tick(s.root, ROOT, "Europe/Berlin", now=at(m)) for m in (1, 2.5)]
+
+
+def test_tick_follows_the_managed_scope_that_enables_the_plugin(tmp_path, monkeypatch, capsys):
+    pytest.importorskip("hermes_cli.config")
+    managed = tmp_path / "managed"
+    managed.mkdir()
+    (managed / "config.yaml").write_text("plugins:\n  enabled: [eselsbruecke]\n", encoding="utf-8")
+    monkeypatch.setenv("HERMES_MANAGED_DIR", str(managed))
+    before = os.environ.get("HERMES_HOME")
+    assert _tick_with_config(tmp_path, "model:\n  default: a\n") == [[], ["Eselsbrücke reminder: call the bank"]]
+    assert os.environ.get("HERMES_HOME") == before and capsys.readouterr().out == ""
+
+
+@pytest.mark.parametrize("config_text,expected", [
+    ("plugins:\n  enabled: [eselsbruecke]\n", [[], ["Eselsbrücke reminder: call the bank"]]),
+    ("plugins:\n  enabled: [other]\n", "disabled"),
+    ("model:\n  default: a\nmodel:\n  default: b\nplugins:\n  enabled: [eselsbruecke]\n", "disabled"),
+    (None, [[], ["Eselsbrücke reminder: call the bank"]]),
+])
+def test_tick_reads_the_profile_file_alone_where_hermes_cannot_be_imported(tmp_path, monkeypatch, capsys,
+                                                                           config_text, expected):
+    monkeypatch.setitem(sys.modules, "hermes_cli.config", None)  # an import of it raises ImportError
+    ticks = _tick_with_config(tmp_path, config_text)
+    if expected == "disabled":
+        assert "disabled" in ticks[0][0] and ticks[1] == []
+    else:
+        assert ticks == expected
+    assert capsys.readouterr().out == ""
+
+
+def test_the_alert_ledger_keeps_only_its_newest_rows(tmp_path):
+    tick = sub("alerts_tick")
+    s = make_store(tmp_path)
+    s.root.mkdir(parents=True, exist_ok=True)
+    path = s.root / "alerts_sent.jsonl"
+    path.write_text("".join(json.dumps({"key": f"k{i}", "at": "x", "by": "tick"}) + "\n"
+                            for i in range(tick.SENT_KEEP * 2 + 5)), encoding="utf-8")
+    tick._append_sent(path, {"key": "new", "at": "x", "by": "tick"})
+    rows = path.read_text(encoding="utf-8").splitlines()
+    assert len(rows) == tick.SENT_KEEP and json.loads(rows[-1])["key"] == "new"

@@ -1,4 +1,4 @@
-// The Eselsbrücke page (D5: a page with a sidebar row; it also opens beside the chat): a head, the
+// The Eselsbrücke page (a page with a sidebar row; it also opens beside the chat): a head, the
 // rail with the dashboard and the switched-on tools by group, and the canvas. It lands on the
 // dashboard; a palette row, the pad keybind or a dashboard tile shows a tool. The same component
 // renders in the beside-chat pane and in a narrow window (`narrow`: no rail, a picker in the head).
@@ -23,7 +23,7 @@ export const TOOL_VIEWS = {
   pad: PadTool, pomodoro: PomodoroTool, timelog: TimelogTool, formatter: FormatterTool, diff: DiffTool, regex: RegexTool,
   tokens: TokensTool, cron: CronTool, encode: EncodeTool, timezones: ClockTool, generate: GenerateTool, colour: ColourTool, qr: QrTool,
 }
-// F20: what "Ask Hermes" drafts for each tool. The pad attaches itself; the others name the agent
+// What "Ask Hermes" drafts for each tool. The pad attaches itself; the others name the agent
 // tool that does the same job, so the chat answers with exact output instead of a guess.
 export const ASK = {
   pad: '@pad:today ', pomodoro: 'With eselsbruecke_timer: ', timelog: 'With eselsbruecke_timelog: ',

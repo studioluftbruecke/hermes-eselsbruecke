@@ -1,4 +1,4 @@
-"""\"Today\" in Hermes' own time zone (PLAN constraint 15).
+"""\"Today\" in Hermes' own time zone.
 
 `now()` is `hermes_time.now()`: the profile's `timezone` setting, `HERMES_TIMEZONE` overrides,
 empty means server-local time. Tests replace the clock with `set_clock()`.
@@ -22,7 +22,7 @@ def set_clock(fn: Optional[Callable[[], dt.datetime]], zone: Optional[str] = Non
 def now() -> dt.datetime:
     if _override is not None:
         return _override()
-    # `hermes_time` is not in Hermes' published plugin API, and no ctx call gives the zone (X20). It
+    # `hermes_time` is not in Hermes' published plugin API, and no ctx call gives the zone. It
     # stays, guarded: restating it would miss its per-profile rules under the multiplexed gateway.
     # Without it the plugin uses server-local time, which is what Hermes does with no zone set.
     try:

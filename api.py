@@ -60,9 +60,12 @@ def _guard(fn):
             return fail(500, "store", str(exc))
         except ValueError as exc:
             return fail(400, "invalid", str(exc))
+        except OverflowError as exc:  # a date or timestamp past what Python's datetime can hold
+            return fail(400, "invalid", f"a value is out of range ({exc})")
         except Exception as exc:  # last resort: the page gets JSON it can show, never a bare 500
             log.exception("eselsbruecke route %s failed", fn.__name__)
-            return fail(500, "internal", f"Something went wrong inside the plugin ({type(exc).__name__}: {exc})"[:400])
+            return fail(500, "internal", f"Something went wrong inside the plugin ({type(exc).__name__}); "
+                                         "the details are in the Hermes log.")
     wrapped.__name__ = fn.__name__
     return wrapped
 
@@ -129,7 +132,7 @@ ENGINE_TOOLS = {"calc": "eselsbruecke_calc", "format": "eselsbruecke_format", "c
 
 @_guard
 def run_engine(engine: str, body: Any) -> "tuple[int, dict]":
-    """The page's Python-side tools (constraint 8): the same handler the agent tool runs, author user.
+    """The page's Python-side tools: the same handler the agent tool runs, author user.
     Engine answers (a parse error included) are 200 with ok true/false; a switched-off tool is 409."""
     from . import env as env_mod
 
@@ -146,7 +149,7 @@ def run_engine(engine: str, body: Any) -> "tuple[int, dict]":
     return 200, {"schema": SCHEMA, **out}
 
 
-# --- M3: today's pad -------------------------------------------------------------------------------
+# --- today's pad -------------------------------------------------------------------------------
 
 def _pad_guard(fn):
     def wrapped(*args, **kwargs):
@@ -226,7 +229,7 @@ def pad_markdown(date: Optional[str] = None) -> "tuple[int, dict]":
 @_pad_guard
 def pad_lines(body: Any) -> "tuple[int, dict]":
     """The user's clicks on the pad: add, update (done, text, kind, reminder, queue, position), delete,
-    and card (a kanban card in triage through Hermes' own tool, Q5)."""
+    and card (a kanban card in triage through Hermes' own tool)."""
     from . import hermes_bridge, pad
 
     if not isinstance(body, dict):
@@ -288,7 +291,7 @@ def pad_lines(body: Any) -> "tuple[int, dict]":
     return ok({**extra, **_pad_view(s, date)})
 
 
-# --- M4: timers, alerts, tips ----------------------------------------------------------------------
+# --- timers, alerts, tips ----------------------------------------------------------------------
 
 def _timer_guard(fn):
     def wrapped(*args, **kwargs):
@@ -314,7 +317,7 @@ def timer_get() -> "tuple[int, dict]":
 
 @_timer_guard
 def timer_post(body: Any) -> "tuple[int, dict]":
-    """The outbox contract (A16): {op, op_id, at}; an op_id already applied answers duplicate: true."""
+    """The outbox contract: {op, op_id, at}; an op_id already applied answers duplicate: true."""
     from . import timer_service
 
     if not isinstance(body, dict):
@@ -356,14 +359,14 @@ def tips_get() -> "tuple[int, dict]":
     return ok({"tips": tips.all_tips(toolbox.load(store()).get("tips"))})
 
 
-# --- M5: time log ----------------------------------------------------------------------------------
+# --- time log ----------------------------------------------------------------------------------
 
 def _setting(key: str, default: Any = None) -> Any:
-    """A plugin setting of the profile that owns the data folder (routes have no ctx)."""
+    """A plugin setting of the calling profile (routes have no ctx)."""
     from . import reference
 
     try:
-        cfg = reference.read_config(store().root.parent.parent)
+        cfg = reference.read_config()
         value = (((cfg.get("plugins") or {}).get("entries") or {}).get("eselsbruecke") or {}).get("settings", {}).get(key)
     except Exception:
         value = None
@@ -377,7 +380,8 @@ def _timelog_guard(fn):
         try:
             return fn(*args, **kwargs)
         except timelog.TimelogError as exc:
-            status = {"unknown_entry": 404, "not_running": 409, "nothing_to_undo": 409}.get(exc.code, 400)
+            status = {"unknown_entry": 404, "not_running": 409, "nothing_to_undo": 409,
+                      "entry_exists": 409, "running": 409}.get(exc.code, 400)
             return fail(status, exc.code, str(exc))
     wrapped.__name__ = fn.__name__
     return _guard(wrapped)
@@ -419,7 +423,7 @@ def timelog_post(body: Any) -> "tuple[int, dict]":
 
 @_timelog_guard
 def timelog_ops(body: Any) -> "tuple[int, dict]":
-    """The Desktop outbox (A16): {ops: [{op, op_id, at, entry_id?, fields?}, ...]} replayed in order."""
+    """The Desktop outbox: {ops: [{op, op_id, at, entry_id?, fields?}, ...]} replayed in order."""
     from . import timelog
 
     if not isinstance(body, dict) or not isinstance(body.get("ops"), list):
@@ -445,7 +449,7 @@ def timelog_export(date: Optional[str] = None) -> "tuple[int, dict]":
     return ok({"filename": f"timelog-{view['from']}.csv", "csv": timelog.to_csv(view), "rows": len(view["entries"])})
 
 
-# --- M6: the o200k ranks for the Desktop's exact token count (A15) --------------------------------
+# --- the o200k ranks for the Desktop's exact token count --------------------------------
 
 RANKS_FILE = Path(__file__).resolve().parent / "data" / "o200k_base.json"
 

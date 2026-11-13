@@ -1,4 +1,4 @@
-"""`@pad:` (constraint 12, Q2) and the unattended lane (design rule 2, constraint 11).
+"""`@pad:` and the unattended lane.
 
 The reference provider is process-wide in Hermes, so it must answer only for a profile that enables
 the plugin; under plugins.isolation: host it is not registered at all. Agent writes are refused in
@@ -46,11 +46,21 @@ def fake_hermes(monkeypatch):
     agent = types.ModuleType("agent")
     agent.context_references = cr
     hc = types.ModuleType("hermes_constants")
-    state = {"home": None}
+    state = {"home": None, "loads": 0}
     hc.get_hermes_home = lambda: state["home"]
+    config = types.ModuleType("hermes_cli.config")  # Hermes' public loader, for the bound profile
+
+    def load_config_readonly():
+        import yaml
+
+        state["loads"] += 1
+        return yaml.safe_load((state["home"] / "config.yaml").read_text(encoding="utf-8")) or {}
+
+    config.load_config_readonly = load_config_readonly
     monkeypatch.setitem(sys.modules, "agent", agent)
     monkeypatch.setitem(sys.modules, "agent.context_references", cr)
     monkeypatch.setitem(sys.modules, "hermes_constants", hc)
+    monkeypatch.setitem(sys.modules, "hermes_cli.config", config)
     return state
 
 
@@ -73,6 +83,16 @@ def test_expand_and_autocomplete_only_where_the_plugin_is_enabled(tmp_path, fake
     fake_hermes["home"] = without
     assert asyncio.run(provider.expand("today")) is None
     assert asyncio.run(provider.autocomplete("")) == []
+    assert fake_hermes["loads"] == 4  # each answer asked Hermes' config loader for the calling profile
+
+
+def test_route_settings_come_from_hermes_config_loader(tmp_path, fake_hermes):
+    home = tmp_path / "p"
+    home.mkdir()
+    (home / "config.yaml").write_text("plugins:\n  entries:\n    eselsbruecke:\n      settings:\n"
+                                      "        week_starts: sunday\n", encoding="utf-8")
+    fake_hermes["home"] = home
+    assert sub("api")._setting("week_starts", "monday") == "sunday" and fake_hermes["loads"] == 1
 
 
 def test_targets(tmp_path):
@@ -130,14 +150,67 @@ def test_single_query_and_unreadable_marker(tmp_path, monkeypatch):
     monkeypatch.setattr(bridge, "_finite_turn", lambda: True)
     assert "single-query" in bridge.unattended_reason(Surface(tmp_path, "cli"), environ={})
     monkeypatch.setattr(bridge, "_finite_turn", lambda: None)
-    assert "moved its one-shot marker" in bridge.unattended_reason(Surface(tmp_path, "desktop"), environ={})
+    for host in ({}, {"HERMES_PLUGIN_HOST_PROCESS": "1"}):
+        reason = bridge.unattended_reason(Surface(tmp_path, "desktop"), environ=host)
+        assert reason == ("this Hermes version does not say whether a person is present, so writes are refused; "
+                          "update the plugin")
+
+
+def _finite_module(monkeypatch, answer):
+    """gateway.session_finite as Hermes ships it (answer True/False), raising (an exception), or gone (None)."""
+    import types
+
+    monkeypatch.undo()  # the autouse fixture replaced _finite_turn; this test reads the real one
+    for name in ("HERMES_PLUGIN_HOST_PROCESS", "HERMES_CRON_SESSION", "HERMES_SINGLE_QUERY_SESSION",
+                 "HERMES_SESSION_PLATFORM"):
+        monkeypatch.delenv(name, raising=False)
+    if answer is None:
+        monkeypatch.setitem(sys.modules, "gateway.session_finite", None)  # import raises ImportError
+        return
+    mod = types.ModuleType("gateway.session_finite")
+
+    def finite_turn_required():
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    mod.finite_turn_required = finite_turn_required
+    monkeypatch.setitem(sys.modules, "gateway.session_finite", mod)
+
+
+@pytest.mark.parametrize("answer,unattended", [(False, False), (True, True), (None, True),
+                                               (RuntimeError("moved"), True)],
+                         ids=["marker-false", "marker-true", "module-missing", "marker-raises"])
+def test_the_one_shot_marker_import_fails_closed(tmp_path, monkeypatch, answer, unattended):
+    bridge = sub("hermes_bridge")
+    _finite_module(monkeypatch, answer)
+    reason = bridge.unattended_reason(Surface(tmp_path, "desktop"), environ={})
+    assert (reason is not None) is unattended, reason
+    if answer is None or isinstance(answer, Exception):
+        assert "does not say whether a person is present" in reason
+
+
+@pytest.mark.parametrize("environ,surface,expect", [
+    ({"HERMES_SINGLE_QUERY_SESSION": "1"}, "desktop", "single-query"),
+    ({"HERMES_CRON_SESSION": "1"}, "desktop", "scheduled job"),
+    ({}, "msgraph_webhook", "msgraph_webhook"),
+    ({"HERMES_SESSION_PLATFORM": "api_server"}, "", "api_server"),
+    ({}, "telegram", None),
+])
+def test_unattended_signals_from_the_environment(tmp_path, monkeypatch, environ, surface, expect):
+    bridge = sub("hermes_bridge")
+    _finite_module(monkeypatch, False)
+    for key, value in environ.items():
+        monkeypatch.setenv(key, value)
+    reason = bridge.unattended_reason(Surface(tmp_path, surface), environ=environ)
+    assert (reason is None) if expect is None else (expect in reason), reason
 
 
 @pytest.mark.parametrize("surface,refused", [("", True), ("cli", True), ("oneshot", True), ("desktop", False),
                                              ("tui", False)])
 def test_host_process_fails_closed_on_blind_surfaces(tmp_path, monkeypatch, surface, refused):
     bridge = sub("hermes_bridge")
-    monkeypatch.setattr(bridge, "_finite_turn", lambda: None)  # the host child cannot see the marker
+    monkeypatch.setattr(bridge, "_finite_turn", lambda: False)  # the host child reads the host's marker, not the turn's
     reason = bridge.unattended_reason(Surface(tmp_path, surface), environ={"HERMES_PLUGIN_HOST_PROCESS": "1"})
     assert (reason is not None and "isolation" in reason) if refused else reason is None
 

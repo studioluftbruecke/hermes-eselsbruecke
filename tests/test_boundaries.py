@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from esb_fakes import BERLIN, set_clock, sub
+from esb_fakes import BERLIN, FakeCtx, load_plugin, set_clock, sub
 
 
 @pytest.fixture
@@ -148,10 +148,10 @@ def test_the_last_resort_guard_answers_json_500_internal(api, monkeypatch):
     monkeypatch.setattr(toolbox, "view", boom)
     status, body = api.toolbox_get()
     assert status == 500 and body["ok"] is False and body["error"] == "internal" and body["schema"] == 1
-    assert "TypeError" in body["message"]
+    assert "TypeError" in body["message"] and "unexpected" not in body["message"]  # the details go to the log
 
 
-# --- X12: YAML alias expansion --------------------------------------------------------------------
+# --- YAML alias expansion --------------------------------------------------------------------
 
 def _bomb(levels: int) -> str:
     lines = ["a0: &a0 [x, x, x, x, x, x, x, x, x, x]"]
@@ -202,3 +202,89 @@ def test_the_format_route_answers_a_bomb_with_ok_false(api):
     assert status == 200 and body["ok"] is False and "alias" in body["message"]
     status, body = api.run_engine("format", {"action": "format", "text": "{}", "lang": "json", "indent": "abc"})
     assert status == 200 and body["ok"] is False
+
+
+HOSTILE_ROUTES = [
+    ("timelog week past year 9999", lambda a: a.timelog_get("9999-12-31")),
+    ("timelog export past year 9999", lambda a: a.timelog_export("9999-12-31")),
+    ("convert a timestamp past time_t", lambda a: a.run_engine("convert", {"action": "timestamp", "value": 10 ** 30})),
+    ("calc 0 ^ -1", lambda a: a.run_engine("calc", {"expr": "0 ^ -1"})),
+]
+
+
+@pytest.mark.parametrize("name,call", HOSTILE_ROUTES, ids=[c[0] for c in HOSTILE_ROUTES])
+def test_hostile_route_input_is_a_refusal_not_a_500(api, name, call):
+    status, body = call(api)
+    assert status < 500 and body.get("ok") is False and body.get("error") != "internal", (status, body)
+
+
+HOSTILE_AGENT = [
+    ("eselsbruecke_timelog", {"action": "week", "date": [{"text": 5}]}),
+    ("eselsbruecke_timelog", {"action": "export", "date": "9999-12-31"}),
+    ("eselsbruecke_timelog", {"action": "add", "client": "Acme", "minutes": "lots"}),
+    ("eselsbruecke_format", {"action": "convert", "text": "a: 1", "to": True}),
+    ("eselsbruecke_format", {"action": "convert", "text": "a: 1", "to": {"a": 1}}),
+    ("eselsbruecke_convert", {"action": "cron", "expression": "* * * * *", "count": [1]}),
+    ("eselsbruecke_convert", {"action": "timestamp", "value": 10 ** 30}),
+    ("eselsbruecke_text", {"action": "regex", "pattern": "a", "text": "a", "flags": [{"text": 5}]}),
+    ("eselsbruecke_text", {"action": "regex", "pattern": "a", "text": "a", "flags": float("nan")}),
+    ("eselsbruecke_generate", {"action": "uuid", "count": [{"text": 5}]}),
+    ("eselsbruecke_generate", {"action": "password", "length": {"a": 1}}),
+    ("eselsbruecke_pad", {"action": "add", "lines": True}),
+    ("eselsbruecke_pad", {"action": "add", "lines": [5]}),
+]
+
+
+@pytest.mark.parametrize("tool,args", HOSTILE_AGENT, ids=[f"{t}-{a['action']}-{i}" for i, (t, a) in enumerate(HOSTILE_AGENT)])
+def test_hostile_agent_arguments_are_refused_as_invalid(tmp_path, tool, args):
+    ctx = FakeCtx(tmp_path / "data")
+    load_plugin().register(ctx)
+    set_clock(dt.datetime(2026, 11, 10, 9, 0, tzinfo=BERLIN))
+    out = ctx.call(tool, **args)
+    assert out["ok"] is False and out["error"] == "invalid", out
+
+
+def test_argument_types_the_agent_often_sends_as_text_still_work(tmp_path):
+    ctx = FakeCtx(tmp_path / "data")
+    load_plugin().register(ctx)
+    set_clock(dt.datetime(2026, 11, 10, 9, 0, tzinfo=BERLIN))
+    assert len(ctx.call("eselsbruecke_generate", action="uuid", count="3")["uuids"]) == 3
+    out = ctx.call("eselsbruecke_timelog", action="add", client="Acme", minutes="45", billable="false")
+    assert out["ok"] and out["entry"]["billable"] is False
+    assert ctx.call("eselsbruecke_pad", action="add", lines=["plain text", {"text": "an object"}])["ok"]
+    assert ctx.call("eselsbruecke_pad", action="add", lines={"text": "one object"})["ok"]
+
+
+def test_whole_number_floats_and_one_or_zero_booleans_work_as_in_0_2_0(tmp_path):
+    """Some providers send integers as 3.0 and booleans as 1 or 0; 0.2.0 answered these calls."""
+    ctx = FakeCtx(tmp_path / "data")
+    load_plugin().register(ctx)
+    set_clock(dt.datetime(2026, 11, 10, 9, 0, tzinfo=BERLIN))
+    assert len(ctx.call("eselsbruecke_generate", action="uuid", version=4, count=3.0)["uuids"]) == 3
+    assert len(ctx.call("eselsbruecke_generate", action="password", length=24.0)["password"]) == 24
+    assert len(ctx.call("eselsbruecke_generate", action="passphrase", words=5.0)["passphrase"].split("-")) == 5
+    assert len(ctx.call("eselsbruecke_convert", action="cron", expression="0 9 * * 1", count=3.0)["next"]) == 3
+    plain = ctx.call("eselsbruecke_generate", action="password", length=40, symbols=0)["password"]
+    assert plain.isalnum()
+    out = ctx.call("eselsbruecke_timelog", action="add", client="Acme", minutes=30, billable=1)
+    assert out["ok"] and out["entry"]["billable"] is True
+    out = ctx.call("eselsbruecke_timelog", action="add", client="Acme", minutes=30.0, billable=0)
+    assert out["ok"] and out["entry"]["billable"] is False
+
+
+@pytest.mark.parametrize("tool,args", [
+    ("eselsbruecke_generate", {"action": "uuid", "count": 2.5}),
+    ("eselsbruecke_generate", {"action": "password", "length": float("inf")}),
+    ("eselsbruecke_generate", {"action": "password", "length": 1e30}),
+    ("eselsbruecke_generate", {"action": "password", "symbols": 2}),
+    ("eselsbruecke_generate", {"action": "password", "symbols": "maybe"}),
+    ("eselsbruecke_timelog", {"action": "add", "client": "Acme", "minutes": 5, "billable": [1]}),
+    ("eselsbruecke_timelog", {"action": "add", "client": "Acme", "minutes": 5, "billable": "yes"}),
+    ("eselsbruecke_toolbox", {"action": "set_clock", "place": "Tokyo", "remove": "yes"}),
+])
+def test_values_that_are_no_whole_number_or_boolean_are_still_refused(tmp_path, tool, args):
+    ctx = FakeCtx(tmp_path / "data")
+    load_plugin().register(ctx)
+    set_clock(dt.datetime(2026, 11, 10, 9, 0, tzinfo=BERLIN))
+    out = ctx.call(tool, **args)
+    assert out["ok"] is False and out["error"] == "invalid", out

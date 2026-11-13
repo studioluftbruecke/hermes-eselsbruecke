@@ -1,4 +1,4 @@
-// The plugin's own settings page (constraint 10), one section per subject with a gap between them:
+// The plugin's own settings page, one section per subject with a gap between them:
 // the status-bar chip (whether it shows, what it shows while something runs, its four faces), the tool
 // switches by group, the pomodoro rhythm, "Alerts while Desktop is closed" with its home-channel
 // warning and the newest tick error, Hermes' time zone, and the history of the toolbox file with restore.

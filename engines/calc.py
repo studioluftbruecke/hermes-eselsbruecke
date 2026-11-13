@@ -20,17 +20,22 @@ import calendar
 import datetime as dt
 import re
 from dataclasses import dataclass, field
-from decimal import Decimal, DivisionByZero, InvalidOperation, Overflow, getcontext, localcontext
+from decimal import Decimal, DivisionByZero, InvalidOperation, Overflow, localcontext
 from typing import Optional
 
 MAX_LEN = 500
 MAX_DEPTH = 50  # nested ( ), ^ and unary signs; each level costs about six Python frames
 DATE_RANGE = "the date falls outside years 1 to 9999"
-getcontext().prec = 40
+PREC = 40  # significant digits; set per evaluation, because a Decimal context belongs to one thread
+MAX_DURATION_S = Decimal(10) ** 18  # about 31 billion years; longer durations are not spelled out
 
 
 class CalcError(ValueError):
     pass
+
+
+class NotACalculation(CalcError):
+    """A word or sign the calculator does not read: the text is no calculation (a note ending in `=`)."""
 
 
 # unit -> (factor to the base unit, dims). Bases: m, kg, s, B; currencies are their own dimension.
@@ -113,7 +118,7 @@ def tokenize(text: str) -> list[tuple[str, str]]:
     while pos < len(text):
         m = TOKEN_RE.match(text, pos)
         if not m:
-            raise CalcError(f"unexpected {text[pos]!r} at position {pos + 1}")
+            raise NotACalculation(f"unexpected {text[pos]!r} at position {pos + 1}")
         kind = m.lastgroup
         val = m.group(kind)
         pos = m.end()
@@ -183,7 +188,7 @@ class Parser:
             self.take()
             target = self.unit_expr(required=True)
         if self.peek()[0] is not None:
-            raise CalcError(f"unexpected {self.peek()[1]!r}")
+            raise NotACalculation(f"unexpected {self.peek()[1]!r}")
         return value, target
 
     def expr(self):
@@ -241,9 +246,12 @@ class Parser:
             if exp.value != exp.value.to_integral_value() or abs(exp.value) > 1000:
                 raise CalcError("the exponent must be a whole number up to 1000")
             try:
-                return Q(base.value ** int(exp.value))
+                value = base.value ** int(exp.value)
             except (InvalidOperation, DivisionByZero) as exc:
                 raise CalcError("that power has no finite answer") from exc
+            if not value.is_finite():  # 0 ^ -1 gives Infinity without a signal
+                raise CalcError("that power has no finite answer")
+            return Q(value)
         return base
 
     def postfix(self):
@@ -296,7 +304,7 @@ class Parser:
             return self.maybe_units(Q(num))
         if kind is None:
             raise CalcError("the expression ends too early")
-        raise CalcError(f"unexpected {val!r}")
+        raise NotACalculation(f"unexpected {val!r}")
 
     def maybe_units(self, v):
         """`85 €/h`, `2h 30m`, `5 km`: unit words after a number, and a sum of adjacent durations."""
@@ -425,9 +433,9 @@ def _add_months(when: dt.datetime, months: int) -> dt.datetime:
 
 def fmt_number(value: Decimal, sep: str = ".", places: Optional[int] = None) -> str:
     with localcontext() as ctx:
-        ctx.prec = 40
+        ctx.prec = PREC
         if places is not None:
-            ctx.prec = max(40, value.adjusted() + places + 1)  # quantize needs every digit of a big amount
+            ctx.prec = max(PREC, value.adjusted() + places + 1)  # quantize needs every digit of a big amount
             q = value.quantize(Decimal(1).scaleb(-places))
         else:
             q = value.quantize(Decimal("1e-10")) if value.as_tuple().exponent < -10 else value
@@ -441,6 +449,8 @@ def fmt_number(value: Decimal, sep: str = ".", places: Optional[int] = None) -> 
 
 
 def _duration_words(seconds: Decimal) -> str:
+    if abs(seconds) >= MAX_DURATION_S:
+        raise CalcError("the duration is too long to show")
     total = int(seconds)
     sign = "-" if total < 0 else ""
     total = abs(total)
@@ -516,12 +526,18 @@ def evaluate(text: str, now: Optional[dt.datetime] = None) -> dict:
     expr = text.strip()
     if expr.endswith("="):
         expr = expr[:-1].rstrip()
-    p = Parser(expr, now or dt.datetime.now())
-    try:
-        value, target = p.statement()
-        out = render(value, target, p.seps)
-    except Overflow as exc:  # a product or sum past Decimal's exponent limit (10^999999)
-        raise CalcError("the number is too large") from exc
+    with localcontext() as ctx:
+        ctx.prec = PREC
+        try:
+            p = Parser(expr, now or dt.datetime.now())
+            value, target = p.statement()
+            out = render(value, target, p.seps)
+        except CalcError:
+            raise
+        except Overflow as exc:  # a product or sum past Decimal's exponent limit (10^999999)
+            raise CalcError("the number is too large") from exc
+        except (ArithmeticError, ValueError, TypeError, RecursionError) as exc:
+            raise CalcError(f"no answer for this expression ({type(exc).__name__})") from exc
     out["expression"] = expr
     return out
 
@@ -540,6 +556,8 @@ def evaluate_line(line: str, now: Optional[dt.datetime] = None) -> Optional[dict
     for cand in candidates:
         try:
             return evaluate(cand, now)
-        except CalcError as exc:
-            last_error = exc
-    return {"error": str(last_error)} if last_error else None
+        except Exception as exc:  # the pad recomputes every read: one bad line must not take the day down
+            last_error = exc if isinstance(exc, CalcError) else CalcError(f"no answer for this line ({type(exc).__name__})")
+    if last_error is None:
+        return None
+    return {"error": str(last_error), **({"not_math": True} if isinstance(last_error, NotACalculation) else {})}

@@ -9,9 +9,9 @@ Roll-over is lazy and idempotent: the first read of today (under the lock) copie
 of the newest earlier day, with `rolled_days + 1`, in front of today's lines and records `rolled`. A
 day written ahead (the page's "Next day") has a file but no `rolled` yet, so it still rolls once it is
 today; a line id already on the day is never copied again. A second read finds `rolled` and does
-nothing. "Today" is Hermes' time zone (`clock`, constraint 15).
+nothing. "Today" is Hermes' time zone (`clock`).
 
-A prompt line queued for a date ("prompt for tomorrow", D4) is listed under "Queued for today" on that
+A prompt line queued for a date ("prompt for tomorrow") is listed under "Queued for today" on that
 date, with "Start this chat" on the page, and under `@pad:queued`.
 """
 from __future__ import annotations
@@ -271,12 +271,14 @@ def with_results(day: dict, calc_on: bool, now: Optional[dt.datetime] = None) ->
     out = {**day, "lines": []}
     for line in day["lines"]:
         row = dict(line)
-        if calc_on and row["text"].rstrip().endswith("="):
+        if calc_on and isinstance(row.get("text"), str) and row["text"].rstrip().endswith("="):
             res = calc.evaluate_line(row["text"], now)
             if res is not None:
                 row["result"] = res.get("result") if "result" in res else None
                 if "error" in res:
                     row["result_error"] = res["error"]
+                if res.get("not_math"):
+                    row["result_not_math"] = True
         out["lines"].append(row)
     return out
 
@@ -296,6 +298,8 @@ def markdown(day: dict) -> str:
             marks.append("added by Hermes")
         if line.get("result"):
             marks.append(f"= {line['result']}")
+        elif line.get("result_error") and not line.get("result_not_math"):  # a note ending in `=` stays as written
+            marks.append(f"no answer: {line['result_error']}")
         rows.append(f"- {box} {line['text']}" + (f" ({'; '.join(marks)})" if marks else ""))
     if len(rows) == 1:
         rows.append("(empty)")

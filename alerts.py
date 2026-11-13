@@ -1,12 +1,13 @@
-"""Alerts while Desktop is closed (A13): one no-model Hermes job per profile, `eselsbruecke-alerts`,
+"""Alerts while Desktop is closed: one no-model Hermes job per profile, `eselsbruecke-alerts`,
 `every 1m`, running the script this module writes into the profile's `scripts/` folder.
 
 `reconcile()` makes the job exist exactly when the switch `alerts.while_closed` in toolbox.json is on:
 it creates the job (deliver `all`: every home channel the profile has, resolved when it fires;
 failure notices `local`, so a broken tick never messages anyone), removes duplicates, and with the
-switch off removes the job and the script. It runs after every toolbox save, on timer start and stop,
-when the page opens and in the doctor. Jobs go through Hermes' own `cronjob_manage` tool
-(`hermes_bridge.dispatch`: `ctx.dispatch_tool` in an agent turn, the P5 import in a route).
+switch off removes the job and the script. It runs after every toolbox save that changes the switch,
+when the page opens and in the doctor; a timer start or stop runs it only when the switch differs from
+the last reconcile (`timer_service.reconcile_if_switched`). Jobs go through Hermes' own `cronjob_manage` tool in an agent
+turn and through `hermes cron` in a route (`hermes_bridge.dispatch`).
 
 The script is stdlib only: it runs `alerts_tick.py` from the plugin folder with `runpy`, prints nothing
 and exits 0 when the plugin folder is gone, and adds any exception to `tick_errors.jsonl` instead
@@ -24,7 +25,7 @@ SCRIPT_NAME = "eselsbruecke_alerts.py"
 SCHEDULE = "every 1m"
 PRESENCE = "presence.json"
 ERRORS = "tick_errors.jsonl"
-ERRORS_KEEP = 20  # X17: a persistent error once grew the file about 1.7 KB a minute without end
+ERRORS_KEEP = 20  # a persistent error once grew the file about 1.7 KB a minute without end
 
 SCRIPT = '''# Eselsbrücke alert tick, written by the Eselsbrücke plugin (alerts.py). It runs once a minute as the
 # Hermes job "{job}" while "Alerts while Desktop is closed" is on. To stop it: switch that setting
@@ -85,10 +86,17 @@ def write_script(store) -> Path:
     return path
 
 
+def _ours(job: dict) -> bool:
+    """The plugin's job: the one named JOB_NAME or the one that runs SCRIPT_NAME (a renamed job too)."""
+    script = str(job.get("script") or "").replace("\\", "/").rsplit("/", 1)[-1]
+    return (job.get("name") or "") == JOB_NAME or script == SCRIPT_NAME
+
+
 def _jobs(dispatch: Callable[[str, dict], dict]) -> list[dict]:
     listed = dispatch("cronjob_manage", {"action": "list"})
-    jobs = listed.get("jobs") or []
-    return [j for j in jobs if (j.get("name") or "") == JOB_NAME]
+    if listed.get("success") is False:
+        raise RuntimeError(f"cronjob_manage list failed: {listed.get('error') or listed}")
+    return [j for j in listed.get("jobs") or [] if isinstance(j, dict) and _ours(j)]
 
 
 def reconcile(store, dispatch: Callable[[str, dict], dict]) -> dict:

@@ -35,6 +35,17 @@ def test_regex_python_flavour():
         t.regex("a", "a", "q")
 
 
+def test_regex_answer_size_is_capped():
+    t = sub("engines.text")
+    out = t.regex("(?=(.*))", "a" * 199_000)
+    size = len(json.dumps(out))
+    assert size < 200_000, size
+    assert out["truncated"] is True and out["clipped"] is True
+    assert out["matches"][0]["groups"][0].startswith("aaa")
+    small = t.regex(r"(\w+)@(\w+)", "me@host you@there")
+    assert small["clipped"] is False and [m["groups"] for m in small["matches"]] == [["me", "host"], ["you", "there"]]
+
+
 def test_regex_catastrophic_pattern_is_stopped():
     t = sub("engines.text")
     with pytest.raises(t.TextError) as exc:

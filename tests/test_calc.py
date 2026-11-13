@@ -80,7 +80,7 @@ DEEP = "(" * 200 + "1" + ")" * 200
     ("-" * 300 + "1", "nested too deep"),
 ])
 def test_out_of_range_and_deep_nesting_are_calc_errors(calc, expr, needle):
-    """X2: anything else escaping evaluate() broke the pad line for good (500 on every read)."""
+    """Anything else escaping evaluate() broke the pad line for good (500 on every read)."""
     with pytest.raises(calc.CalcError) as exc:
         calc.evaluate(expr, NOW)
     assert needle in str(exc.value)
@@ -129,3 +129,22 @@ def test_pad_lines(calc):
 def test_value_is_dot_decimal_for_machines(calc):
     out = calc.evaluate("16,90 * 12", NOW)
     assert out["value"] == "202.8" and out["kind"] == "number"
+
+
+@pytest.mark.parametrize("expr", ["0 ^ -1", "0 ^ -3 + 1", "(10^1000)^5 * 1 h", "(10^1000)^5 * 1 s", "(9^1000)^1000 h"])
+def test_answers_without_a_finite_value_are_refused_as_calc_errors(calc, expr):
+    with pytest.raises(calc.CalcError):
+        calc.evaluate(expr, NOW)
+    assert "error" in calc.evaluate_line(expr + " =", NOW)
+
+
+def test_precision_is_the_same_on_every_thread(calc):
+    import threading
+
+    expr = "100000000000000000000000000000 € / 3"
+    main = calc.evaluate(expr, NOW)["result"]
+    seen = []
+    worker = threading.Thread(target=lambda: seen.append(calc.evaluate(expr, NOW)["result"]))
+    worker.start()
+    worker.join()
+    assert main == seen[0] == "33333333333333333333333333333.33 €"

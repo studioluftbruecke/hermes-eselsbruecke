@@ -12,7 +12,7 @@ import { fileURLToPath, pathToFileURL } from 'url'
 const here = path.dirname(fileURLToPath(import.meta.url))
 export const SRC = path.resolve(here, '..', 'desktop', 'src')
 // The version the bundle under test carries (core.js VERSION); the fake /health answers `server.version`.
-export const HARNESS_VERSION = '0.2.0'
+export const HARNESS_VERSION = '0.2.1'
 
 const SDK = `
 const listeners = new Map()
@@ -29,7 +29,20 @@ export const calls = []
 const any = () => null
 export const useValue = a => a.get()
 export const useQuery = () => ({})
-export const useQueryClient = () => ({ setQueryData: any, invalidateQueries: any })
+// React Query's client as far as the plugin uses it outside components: the cache answers what was set
+// or fetched last, and every success is announced to cache subscribers in TanStack v5's event shape
+// ({ type: 'updated', action: { type: 'success' }, query }). fetchQuery always calls queryFn (no staleTime).
+const cache = new Map()
+const cacheSubs = new Set()
+const announce = (queryKey, data) => cacheSubs.forEach(fn => fn({ type: 'updated', action: { type: 'success' }, query: { queryKey, state: { data } } }))
+export const queryClient = {
+  getQueryData: k => cache.get(JSON.stringify(k)),
+  setQueryData: (k, d) => { cache.set(JSON.stringify(k), d); announce(k, d); return d },
+  fetchQuery: async ({ queryKey, queryFn }) => { const d = await queryFn(); cache.set(JSON.stringify(queryKey), d); announce(queryKey, d); return d },
+  invalidateQueries: () => Promise.resolve(),
+  getQueryCache: () => ({ subscribe: fn => { cacheSubs.add(fn); return () => cacheSubs.delete(fn) } }),
+}
+export const useQueryClient = () => queryClient
 export const Switch = any, Input = any, Popover = any, PopoverTrigger = any, PopoverContent = any
 export const DropdownMenu = any, DropdownMenuContent = any, DropdownMenuItem = any, DropdownMenuSeparator = any, DropdownMenuTrigger = any
 export const Codicon = any
@@ -58,6 +71,7 @@ export const useState = v => [typeof v === 'function' ? v() : v, () => {}]
 export const useEffect = () => {}
 export const useMemo = fn => fn()
 export const useRef = v => ({ current: v })
+export class Component { constructor(props) { this.props = props } }
 `
 const JSX = `
 export const jsx = (type, props) => ({ type, props })
@@ -99,7 +113,8 @@ export async function bundle(nmArg) {
     ns('clockTool', 'tools/clock.js'),
     ns('timelogTool', 'tools/timelog.js'),
     ns('sidebar', 'sidebar.js'),
-    `export { host, calls } from '@hermes/plugin-sdk'`,
+    ns('visibility', 'visibility.js'),
+    `export { host, calls, queryClient } from '@hermes/plugin-sdk'`,
   ].join('\n'))
   const out = path.join(dir, 'desktop.mjs')
   await esbuild.build({

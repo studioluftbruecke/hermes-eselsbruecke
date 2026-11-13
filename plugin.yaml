@@ -1,6 +1,6 @@
 name: eselsbruecke
-version: "0.2.0"
-description: "Eselsbrücke: a helper toolbox for Hermes with tools you switch on and off. A today pad for short notes, a pomodoro that runs itself, a billable time log, a formatter, a colour picker and small tools (diff, regex, token count, time zones, encode, UUID, cron, QR). Your agent can use the same tools for exact answers. Local files, no account."
+version: "0.2.1"
+description: "Eselsbrücke: a helper toolbox for Hermes with a today pad, a pomodoro, a billable time log and small tools you switch on and off. Your agent uses the same tools for exact answers."
 author: "Studio Luftbrücke"
 license: MIT
 requires_hermes: ">=0.23.0"

@@ -1,6 +1,6 @@
-"""The Desktop half's build box (M6): the committed desktop/plugin.js, data/o200k_base.json and
+"""The Desktop half's build box: the committed desktop/plugin.js, data/o200k_base.json and
 THIRD_PARTY_NOTICES.md equal a fresh build, the runtime loader accepts the bundle, module evaluation
-stays in budget (constraint 20) and register() makes its contributions, Hermes' admission lint is clean
+stays in budget and register() makes its contributions, Hermes' admission lint is clean
 and the install scan says `safe`, and the JavaScript engines equal the Python ones on the parity
 fixture. The Desktop behaviour tests (tests/test_desktop_outbox.mjs, tests/test_desktop_surfaces.mjs)
 run here too.
@@ -11,6 +11,7 @@ Hermes' own Python: both are found from HERMES_SOURCE (tests/esb_fakes.py `herme
 """
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -59,7 +60,7 @@ def _sha(path: Path) -> str:
 @needs_node
 def test_committed_bundle_equals_a_fresh_build(fresh_build):
     assert fresh_build["plugin_js"]["sha256"] == _sha(ROOT / "desktop" / "plugin.js"), \
-        "desktop/plugin.js is stale: run node desktop/build/build.mjs and commit it (milestone-closing commits only)"
+        "desktop/plugin.js is stale: run node desktop/build/build.mjs and commit it with the source change"
     assert fresh_build["ranks"]["sha256"] == _sha(ROOT / "data" / "o200k_base.json")
     assert fresh_build["notices"]["sha256"] == _sha(ROOT / "THIRD_PARTY_NOTICES.md"), \
         "THIRD_PARTY_NOTICES.md is stale: run node desktop/build/build.mjs and commit it"
@@ -82,7 +83,7 @@ def test_loader_accepts_it_and_evaluation_is_in_budget(fresh_build):
 @needs_node
 @pytest.mark.parametrize("source", [None, "empty"])
 def test_build_fails_loudly_without_the_desktop_loader(source, tmp_path):
-    """X20: a missing runtime-loader.ts is a failed check, never a passed one."""
+    """A missing runtime-loader.ts is a failed check, never a passed one."""
     env = _build_env(HERMES_SOURCE=str(tmp_path) if source else None)
     if not source:
         env.pop("HERMES_SOURCE", None)
@@ -107,8 +108,9 @@ def test_admission_lint_clean_and_install_scan_safe():
     print("install scan findings", out["findings"])
     print("private core imports", out["private_imports"])
     assert out["lint"] == []
+    assert out["review"] == []  # no warning for the catalog reviewer (an app markup selector, a bridge call)
     assert out["verdict"] == "safe" and out["high"] == []
-    # X20: what `hermes plugins validate` warns about is exactly the two guarded imports test_release.py accepts
+    # what `hermes plugins validate` warns about is exactly the two guarded imports test_release.py accepts
     assert {site.split(" ", 1)[1].split(".finite_turn_required")[0] for site in out["private_imports"]} == \
         {"hermes_time", "gateway.session_finite"}, out["private_imports"]
 
@@ -140,7 +142,7 @@ def test_parity_script_without_its_argument_says_how_to_run_it():
     ("test_desktop_outbox.mjs", 11),
     ("test_desktop_surfaces.mjs", 12),
     ("test_desktop_clock.mjs", 9),
-    ("test_desktop_dashboard.mjs", 17),
+    ("test_desktop_dashboard.mjs", 23),
     ("test_desktop_tools.mjs", 19),
 ])
 def test_desktop_behaviour(name, minimum):
@@ -151,3 +153,27 @@ def test_desktop_behaviour(name, minimum):
     assert out["failed"] == 0, out["failures"]
     assert out["cases"] >= minimum
     assert run.returncode == 0
+
+
+def test_ci_rebuilds_the_generated_files_and_compares_each():
+    yaml = pytest.importorskip("yaml")
+    flow = yaml.safe_load((ROOT / ".github" / "workflows" / "bundle.yml").read_text(encoding="utf-8"))
+    steps = flow["jobs"]["rebuild"]["steps"]
+    runs = "\n".join(step.get("run", "") for step in steps)
+    assert "npm ci" in runs and "node build.mjs --out" in runs
+    for name in ("desktop/plugin.js", "data/o200k_base.json", "THIRD_PARTY_NOTICES.md"):
+        assert name in runs, f"the workflow does not compare {name}"
+    assert "cmp -s" in runs and "exit $status" in runs
+
+
+def test_ci_builds_against_a_fixed_hermes_source_and_fixed_actions():
+    """Upstream's default branch can move or rename the loader the build reads, so the job would go red
+    without any change here; a tag can be moved, a commit cannot."""
+    yaml = pytest.importorskip("yaml")
+    flow = yaml.safe_load((ROOT / ".github" / "workflows" / "bundle.yml").read_text(encoding="utf-8"))
+    steps = flow["jobs"]["rebuild"]["steps"]
+    upstream = [s for s in steps if (s.get("with") or {}).get("repository") == "NousResearch/hermes-agent"]
+    assert len(upstream) == 1 and re.fullmatch(r"[0-9a-f]{40}", str(upstream[0]["with"].get("ref", "")))
+    for step in steps:
+        if "uses" in step:
+            assert re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", step["uses"]), step["uses"]

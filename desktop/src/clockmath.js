@@ -2,7 +2,7 @@
 // widget and smart paste. Places come from data/places.json (the tz database's zone.tab plus a city
 // list), the same file the Python half resolves city names with (engines/places.py), so "Mumbai"
 // means the same zone for the page and the agent (tests/fixtures/places.json).
-// Nothing runs at import: the list is built and a zone's formatter is made on first use (constraint 9).
+// Nothing runs at import: the list is built and a zone's formatter is made on first use.
 import DATA from '../../data/places.json'
 
 export const MINUS = '\u2212'

@@ -1,7 +1,7 @@
 {
   "name": "eselsbruecke-desktop-build",
   "private": true,
-  "description": "Builds plugins/eselsbruecke/desktop/plugin.js and data/o200k_base.json. Never installed at the plugin root (R11).",
+  "description": "Builds plugins/eselsbruecke/desktop/plugin.js and data/o200k_base.json. Never installed at the plugin root.",
   "license": "MIT",
   "type": "module",
   "scripts": {

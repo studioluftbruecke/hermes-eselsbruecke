@@ -63,7 +63,7 @@ const page = (M, props = {}) => draw({ type: M.page.ToolboxPage, props }, new Se
 
 await t.test('the bundle under test carries the harness version', async () => {
   const { M } = await fresh(file)
-  assert.strictEqual(M.VERSION, '0.2.0')
+  assert.strictEqual(M.VERSION, '0.2.1')
 })
 
 await t.test('landing: the sidebar row and the "open" keybind give the dashboard', async () => {
@@ -315,6 +315,104 @@ await t.test('chip: waiting clicks are a dot and a count in the tooltip; chip_vi
   assert.strictEqual(draw({ type: C.Chip, props: {} }), null, 'a hidden chip came back because a click waits')
 })
 
+// The status-bar item (visibility.js): registered as a data item Desktop's right-click menu lists while
+// "Show in status bar" is on, disposed while it is off.
+const barItems = contributions => contributions.filter(c => c.area === 'statusbar')
+
+await t.test('status bar: shown by default as a data item with the stable id, the brand as toggleLabel and the chip inside its boundary', async () => {
+  const { M, contributions } = await registered()
+  const items = barItems(contributions)
+  assert.strictEqual(items.length, 1, 'not exactly one status-bar item')
+  const [item] = items
+  assert.strictEqual(item.render, undefined, 'a top-level render: Desktop drops toggleLabel and never lists it')
+  assert.strictEqual(item.data.id, 'eselsbruecke.chip')
+  assert.strictEqual(item.data.toggleLabel, 'Eselsbrücke')
+  const tree = item.data.render()
+  assert.strictEqual(tree.type, M.chip.Boundary, 'the chip is not inside the plugin\'s own error boundary')
+  assert.strictEqual(tree.props.children.type, M.chip.Chip)
+  assert.strictEqual(typeof tree.props.children.props.onBeside, 'function')
+  assert.strictEqual(M.visibility.chipShown(), true)
+})
+
+await t.test('status bar: the settings switch off disposes the item, on registers it once again', async () => {
+  const { M, server, contributions, store } = await registered()
+  const save = M.ui.useToolboxSave()
+  const data = await M.rest('/toolbox')
+  const bar = sw => nodes(draw({ type: M.settings.SettingsView, props: { data: sw, save } })).find(n => n.type === 'sdk' && n.props['aria-label'] === 'Show in status bar')
+  await bar(data).props.onCheckedChange(false)
+  assert.strictEqual(server.toolbox.layout.chip_visible, false, 'the switch did not save')
+  assert.strictEqual(barItems(contributions).length, 0, 'switched off, but the item is still registered')
+  assert.strictEqual(M.visibility.chipShown(), false)
+  assert.deepStrictEqual(JSON.parse(store.get('chipLayout:p1')), { chip: 'auto', chip_visible: false }, 'the layout seen last was not stored')
+  const off = await M.rest('/toolbox')
+  assert.strictEqual(bar(off).props.checked, false)
+  await bar(off).props.onCheckedChange(true)
+  await M.visibility.readVisibility()
+  await M.visibility.readVisibility()
+  assert.strictEqual(barItems(contributions).length, 1, 'switched on, but not exactly one item')
+  assert.strictEqual(barItems(contributions)[0].data.id, 'eselsbruecke.chip')
+})
+
+await t.test('status bar: a change made elsewhere lands on the next read; a failed read changes nothing; a file from before chip_visible hides it', async () => {
+  const { M, server, contributions } = await registered()
+  server.toolbox = { ...server.toolbox, layout: { chip: 'auto', chip_visible: false } } // the agent hid it
+  assert.strictEqual(await M.visibility.readVisibility(), false)
+  assert.strictEqual(barItems(contributions).length, 0)
+  server.down = true
+  assert.strictEqual(await M.visibility.readVisibility(), null)
+  assert.strictEqual(barItems(contributions).length, 0, 'a failed read brought the chip back')
+  server.down = false
+  server.toolbox = { ...server.toolbox, layout: { chip: 'auto', chip_visible: true } }
+  assert.strictEqual(await M.visibility.readVisibility(), true)
+  server.down = true
+  assert.strictEqual(await M.visibility.readVisibility(), null)
+  assert.strictEqual(barItems(contributions).length, 1, 'a failed read removed the chip')
+  server.down = false
+  server.toolbox = { ...server.toolbox, layout: { rail: 'groups', chip: 'off' } }
+  assert.strictEqual(await M.visibility.readVisibility(), false)
+})
+
+await t.test('status bar: the layout seen last decides at start, so a hidden chip does not flash; a profile switch uses that profile\'s', async () => {
+  const env = await fresh(file)
+  env.ctx.storage.set('chipLayout:p1', { chip: 'auto', chip_visible: false })
+  env.server.down = true
+  env.M.plugin.register(env.ctx)
+  assert.strictEqual(barItems(env.contributions).length, 0, 'the hidden chip was registered at start')
+  await tick(30)
+  assert.strictEqual(barItems(env.contributions).length, 0, 'the hidden chip came back while Hermes is unreachable')
+  env.server.down = false
+  await env.M.visibility.readVisibility() // the toolbox says shown
+  assert.strictEqual(barItems(env.contributions).length, 1)
+  env.ctx.storage.set('chipLayout:p2', { chip: 'auto', chip_visible: false })
+  env.server.down = true
+  env.M.host.state.profile.set('p2')
+  assert.strictEqual(barItems(env.contributions).length, 0, 'p2 hid the chip, but the switch kept p1\'s')
+  // an answer for another profile than the one Desktop is on changes nothing
+  env.M.queryClient.setQueryData(env.M.qk('p1', 'toolbox'), { toolbox: { layout: { chip: 'auto', chip_visible: true } } })
+  assert.strictEqual(barItems(env.contributions).length, 0, 'p1\'s answer showed the chip in p2')
+  env.M.host.state.profile.set('p1')
+  await tick(30)
+  assert.strictEqual(barItems(env.contributions).length, 1)
+})
+
+await t.test('status bar: disposing the plugin removes the item and stops following the toolbox', async () => {
+  const { M, contributions, disposers } = await registered()
+  disposers.forEach(fn => fn())
+  assert.strictEqual(barItems(contributions).length, 0)
+  M.queryClient.setQueryData(M.qk('p1', 'toolbox'), { toolbox: { layout: { chip: 'auto', chip_visible: true } } })
+  assert.strictEqual(barItems(contributions).length, 0, 'a toolbox answer after dispose registered the chip again')
+  assert.strictEqual(await M.visibility.readVisibility(), null)
+})
+
+await t.test('status bar: the chip\'s own boundary renders the chip, and nothing once it threw', async () => {
+  const { M } = await fresh(file)
+  const b = new M.chip.Boundary({ children: 'chip' })
+  assert.strictEqual(b.render(), 'chip')
+  b.state = M.chip.Boundary.getDerivedStateFromError(new Error('boom'))
+  b.componentDidCatch(new Error('boom'))
+  assert.strictEqual(b.render(), null, 'a chip that threw is still drawn')
+})
+
 await t.test('smart paste: the answer names the tool, the button fills its drafts and opens it', async () => {
   const { M } = await fresh(file)
   const D = M.dashboard
@@ -387,17 +485,17 @@ await t.test('welcome: every tool with its blurb and a switch while first_run, "
 
 await t.test('version mismatch: one sentence that names both versions and the side to update', async () => {
   const { M } = await fresh(file)
-  assert.strictEqual(M.versionNote('0.2.0'), null, 'the same version is a mismatch')
-  assert.strictEqual(M.versionNote('0.3.0'), 'Eselsbrücke is 0.2.0 on this computer and 0.3.0 on your Hermes server. Update Eselsbrücke on this computer.')
-  assert.strictEqual(M.versionNote('0.1.1'), 'Eselsbrücke is 0.2.0 on this computer and 0.1.1 on your Hermes server. Update Eselsbrücke on your Hermes server.')
+  assert.strictEqual(M.versionNote('0.2.1'), null, 'the same version is a mismatch')
+  assert.strictEqual(M.versionNote('0.3.0'), 'Eselsbrücke is 0.2.1 on this computer and 0.3.0 on your Hermes server. Update Eselsbrücke on this computer.')
+  assert.strictEqual(M.versionNote('0.1.1'), 'Eselsbrücke is 0.2.1 on this computer and 0.1.1 on your Hermes server. Update Eselsbrücke on your Hermes server.')
   assert.match(M.versionNote('0.10.0', '0.9.2'), /Update Eselsbrücke on this computer\.$/, '0.10 was read as older than 0.9')
   assert.strictEqual(M.versionNote('0.3.0', 'dev'), null, 'a development bundle complains')
   assert.strictEqual(M.versionNote(undefined), null, 'no answer from /health is a mismatch')
   // the settings page shows it
   const S = M.settings
   const tree = draw({ type: S.SettingsView, props: { data: answer(), health: { version: '0.1.1' }, save: async () => ({}) } })
-  assert.match(text(tree), /0\.2\.0 on this computer and 0\.1\.1 on your Hermes server/)
-  assert.doesNotMatch(text(draw({ type: S.SettingsView, props: { data: answer(), health: { version: '0.2.0' }, save: async () => ({}) } })), /on your Hermes server\./)
+  assert.match(text(tree), /0\.2\.1 on this computer and 0\.1\.1 on your Hermes server/)
+  assert.doesNotMatch(text(draw({ type: S.SettingsView, props: { data: answer(), health: { version: '0.2.1' }, save: async () => ({}) } })), /on your Hermes server\./)
 })
 
 await t.test('settings: sections with the tools by group, the status bar switch and its saves, no presets, no tool id in sight', async () => {
@@ -417,7 +515,7 @@ await t.test('settings: sections with the tools by group, the status bar switch 
   assert.deepStrictEqual(S.rhythmSave(data, 'custom').toolbox.pomodoro, { rhythm: 'custom', work: 25, short: 5, long: 15, cycles: 4 })
 
   const saved = []
-  const tree = draw({ type: S.SettingsView, props: { data, health: { version: '0.2.0', time_zone: { zone: 'Europe/Berlin', offset: '+0100' } }, save: async b => { saved.push(b); return {} } } })
+  const tree = draw({ type: S.SettingsView, props: { data, health: { version: '0.2.1', time_zone: { zone: 'Europe/Berlin', offset: '+0100' } }, save: async b => { saved.push(b); return {} } } })
   assert.ok(String(tree.props.className).split(' ').includes('settings'), 'the page root is not the spaced grid')
   const titles = byClass(tree, 'sec').map(s => text(nodes(s).find(n => n.type === 'h3')))
   assert.deepStrictEqual(titles, ['Status bar', 'Daily tools', 'Code tools', 'Convert tools', 'Design tools', 'For the pad and the agent', 'Pomodoro', 'Alerts', 'Time zone', 'History'])

@@ -2,19 +2,18 @@
 
     @pad:today   @pad:yesterday   @pad:2026-11-09   @pad:queued
 
-Hermes keeps one provider table for the whole process (P7), shared by every profile the gateway
-serves, with no unregister. So the provider (built in `make_provider`) resolves this plugin's module
-by name on every call (a reload answers with the new code) and answers only when the calling profile
-(the bound Hermes home) enables the plugin: `expand` gives None and `autocomplete` [] elsewhere
-(constraint 12). Under `plugins.isolation: host` the provider would live in the first profile's
-host child and serve that profile's pad to all, so `register()` skips it there.
+Hermes keeps one provider table for the whole process, shared by every profile the gateway serves,
+with no unregister. So the provider (built in `make_provider`) resolves this plugin's module by name
+on every call (a reload answers with the new code) and answers only when the calling profile (the
+bound Hermes home) enables the plugin: `expand` gives None and `autocomplete` [] elsewhere. Under
+`plugins.isolation: host` the provider would live in the first profile's host child and serve that
+profile's pad to all, so `register()` skips it there.
 """
 from __future__ import annotations
 
 import datetime as dt
 import importlib
 import sys
-from pathlib import Path
 from typing import Any, Callable, Optional
 
 PREFIX = "pad"
@@ -32,23 +31,17 @@ def enabled_in(config: dict, plugin: str = "eselsbruecke") -> bool:
     return plugin in enabled and plugin not in disabled
 
 
-def read_config(home: Path) -> dict:
-    """The profile's config.yaml, read fresh (a few KB): a cache keyed by path could answer for the
-    wrong profile in a multiplexed process."""
-    from ruamel.yaml import YAML
+def read_config() -> dict:
+    """The calling profile's config through Hermes' public loader, which follows the bound Hermes
+    home and caches per config path, so a multiplexed process reads each profile's own file."""
+    from hermes_cli.config import load_config_readonly
 
-    path = home / "config.yaml"
-    with open(path, encoding="utf-8") as fh:
-        return YAML(typ="safe").load(fh) or {}
+    return load_config_readonly() or {}
 
 
-def enabled_here(home: Optional[Path] = None) -> bool:
+def enabled_here() -> bool:
     try:
-        if home is None:
-            from hermes_constants import get_hermes_home
-
-            home = Path(get_hermes_home())
-        return enabled_in(read_config(home))
+        return enabled_in(read_config())
     except Exception:
         return False  # cannot tell: answer nothing rather than another profile's pad
 

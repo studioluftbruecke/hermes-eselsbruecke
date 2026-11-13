@@ -11,25 +11,25 @@
     GET  /pad/markdown[?date=]      the day as Markdown (Copy as Markdown)
     POST /pad/lines                 {op: add|update|delete|restore|card, ...}; card makes a triage kanban card
     GET  /timer, POST /timer        the running timer; {op: start|pause|resume|stop, op_id?, at?, ...}
-                                    (an op_id applied before answers duplicate: true, A16)
+                                    (an op_id applied before answers duplicate: true)
     POST /presence                  the Desktop chip's heartbeat (the alert tick stays silent while fresh)
     GET  /alerts, POST /alerts/reconcile   the tick job's state; make it match the switch
     GET  /tips                      built-in and own productivity tips
     GET  /timelog[?date=]           a week: entries, totals per client and project, running timer, clients
     POST /timelog                   a click: {op: start|stop|add|edit|delete|undo|client, ...}
-    POST /timelog/ops               the Desktop outbox: {ops: [...]}, each op_id stored once (A16)
+    POST /timelog/ops               the Desktop outbox: {ops: [...]}, each op_id stored once
     GET  /timelog/export[?date=]    the week as CSV text
-    GET  /data/o200k                the o200k ranks (2.3 MB JSON) for the page's exact token count (A15)
+    GET  /data/o200k                the o200k ranks (2.3 MB JSON) for the page's exact token count
     POST /run/{engine}              calc | format | convert | text | generate: {action, ...} as the agent
                                     tool takes it; 200 with ok true/false, 409 when the tool is off
 
 Every answer carries `schema`; errors are {ok: false, error, message} with a 4xx status. These are the
-user's own clicks (author `user`), so no unattended check runs here (constraint 11): for every profile
+user's own clicks (author `user`), so no unattended check runs here: for every profile
 but the dashboard's own, routes run in the profile's plugin host child, which has
 HERMES_PLUGIN_HOST_PROCESS=1.
 
 Hermes loads this file as a standalone module, so the plugin folder is loaded as a package by path.
-The data folder is computed per call from the bound Hermes home (constraint 18).
+The data folder is computed per call from the bound Hermes home.
 """
 from __future__ import annotations
 

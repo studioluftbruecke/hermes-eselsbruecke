@@ -1,5 +1,5 @@
 // The Desktop's JavaScript engines against tests/fixtures/parity.json, the contract written from the
-// Python engines (constraint 8). One stated difference: a zone's abbreviation (`abbr`) comes from
+// Python engines. One stated difference: a zone's abbreviation (`abbr`) comes from
 // Intl in the Desktop and from zoneinfo in Python ("GMT+9" against "JST"), so it is left out.
 // Run by tests/test_desktop_build.py: node test_desktop_parity.mjs <desktop/build/node_modules>
 // It bundles desktop/src/engines.js and timer.js with esbuild (the wordlist is a text import) into a

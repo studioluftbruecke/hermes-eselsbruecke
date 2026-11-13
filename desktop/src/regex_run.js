@@ -1,4 +1,4 @@
-// The Regex tester's runner (X13): the user's pattern runs in a Web Worker started from a Blob URL,
+// The Regex tester's runner: the user's pattern runs in a Web Worker started from a Blob URL,
 // never on the renderer thread, because a pattern with catastrophic backtracking ((a+)+$ on 28
 // characters takes seconds in V8) would freeze all of Desktop. A run that has not answered after
 // `timeoutMs` is terminated; a newer run supersedes (and terminates) the one before it. The worker's
@@ -8,7 +8,7 @@ import { regex } from './engines.js'
 export const TIMEOUT_MS = 300
 
 let workerUrl = null
-/** The worker's source, built on first use (nothing runs at module evaluation, constraint 9). */
+/** The worker's source, built on first use (nothing runs at module evaluation). */
 function makeWorker() {
   if (!workerUrl) {
     const src = `const regex = ${regex.toString()};

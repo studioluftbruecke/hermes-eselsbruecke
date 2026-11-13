@@ -1,8 +1,8 @@
 // The Desktop outbox, timer clicks and alerts against a fake backend (tests/desktop_harness.mjs):
-// replay order (X4), a click queued during a replay (X5), a 5xx kept and a 4xx dropped with a toast
-// (X6), "Try again" on an op older than a day (N1), each kind replaying from its own oldest op and the
-// toast for a click behind a stuck op (N3), dedupe by op_id, timer errors shown (X14), the wake burst
-// (X16) and the hours label (X7).
+// replay order, a click queued during a replay, a 5xx kept and a 4xx dropped with a toast,
+// "Try again" on an op older than a day, each kind replaying from its own oldest op and the
+// toast for a click behind a stuck op, dedupe by op_id, timer errors shown, the wake burst
+// and the hours label.
 // Run by tests/test_desktop_build.py: node test_desktop_outbox.mjs <desktop/build/node_modules>
 // Prints one JSON line { cases, failed, failures }; exit 1 on a failure.
 import assert from 'assert'
@@ -15,7 +15,7 @@ const t = suite()
 const ops = M => M.readOutbox().map(i => i.op.op)
 const refused = toasts => toasts.filter(m => /refused|no timer|database/i.test(m))
 
-await t.test('X4: a click made after reconnecting waits behind the queued clicks', async () => {
+await t.test('a click made after reconnecting waits behind the queued clicks', async () => {
   const { M, server, toasts } = await fresh(file)
   M.startLive(M.getCtx())
   await tick(20)
@@ -33,7 +33,7 @@ await t.test('X4: a click made after reconnecting waits behind the queued clicks
   assert.deepStrictEqual(ops(M), [])
 })
 
-await t.test('X5: a click queued while a replay runs survives the replay', async () => {
+await t.test('a click queued while a replay runs survives the replay', async () => {
   const { M, server } = await fresh(file)
   server.down = true
   await M.timerAction({ op: 'start', kind: 'pomodoro' })
@@ -52,7 +52,7 @@ await t.test('X5: a click queued while a replay runs survives the replay', async
   assert.ok(server.timer && server.timer.paused.length === 1, 'the pause reached the server')
 })
 
-await t.test('X6: a 5xx keeps the op, counts the try, and the next replay sends it', async () => {
+await t.test('a 5xx keeps the op, counts the try, and the next replay sends it', async () => {
   const { M, server, toasts } = await fresh(file)
   server.down = true
   await M.timerAction({ op: 'start', kind: 'pomodoro' })
@@ -70,7 +70,7 @@ await t.test('X6: a 5xx keeps the op, counts the try, and the next replay sends 
   assert.ok(server.timer, 'the start reached the server on the next replay')
 })
 
-await t.test('X6: a 409 drops the op with a toast that names the refusal', async () => {
+await t.test('a 409 drops the op with a toast that names the refusal', async () => {
   const { M, server, toasts } = await fresh(file)
   server.down = true
   await M.sendOrQueue('timer', { op: 'pause' })
@@ -80,7 +80,7 @@ await t.test('X6: a 409 drops the op with a toast that names the refusal', async
   assert.ok(toasts().some(m => /refused/.test(m) && /no timer is running/.test(m)), `toasts ${JSON.stringify(toasts())}`)
 })
 
-await t.test('X6: after the retry cap the op stops replaying and the chip can discard it', async () => {
+await t.test('after the retry cap the op stops replaying and the chip can discard it', async () => {
   const { M, server } = await fresh(file)
   server.down = true
   await M.timerAction({ op: 'start', kind: 'pomodoro' })
@@ -99,7 +99,7 @@ await t.test('X6: after the retry cap the op stops replaying and the chip can di
   assert.deepStrictEqual(ops(M), [])
 })
 
-await t.test('X6: an op older than the age limit stops replaying and is shown as stuck', async () => {
+await t.test('an op older than the age limit stops replaying and is shown as stuck', async () => {
   const { M } = await fresh(file)
   const store = M.getCtx().storage
   store.set('outbox:p1', [{ kind: 'timer', op: { op: 'pause', op_id: 'x1', at: '2026-11-01T09:00:00+01:00' }, queuedAt: Date.now() - M.MAX_AGE_MS - 1000 }])
@@ -108,7 +108,7 @@ await t.test('X6: an op older than the age limit stops replaying and is shown as
   assert.ok(status.stuck && status.stuck.reason === 'age', JSON.stringify(status))
 })
 
-// --- N1: an op older than a day is sent once on "Try again"; the server decides -----------------
+// --- an op older than a day is sent once on "Try again"; the server decides -----------------
 
 const old = (M, items) => {
   M.getCtx().storage.set('outbox:p1', items)
@@ -126,7 +126,7 @@ function buttons(node, out = []) {
   return out
 }
 
-await t.test('N1: the chip offers "Try again" for an op older than a day', async () => {
+await t.test('the chip offers "Try again" for an op older than a day', async () => {
   const { M } = await fresh(file)
   old(M, [{ kind: 'timer', op: { op: 'stop', op_id: 's1', at: '2026-11-06T18:00:00+01:00' }, queuedAt: dayAgo(M) }])
   assert.strictEqual(typeof M.chip.OutboxNote, 'function', 'OutboxNote is not exported from chip.js')
@@ -134,7 +134,7 @@ await t.test('N1: the chip offers "Try again" for an op older than a day', async
   assert.deepStrictEqual(labels, ['Try again', 'Discard it'])
 })
 
-await t.test('N1: "Try again" sends an op older than a day once, and the server applies it', async () => {
+await t.test('"Try again" sends an op older than a day once, and the server applies it', async () => {
   const { M, server } = await fresh(file)
   server.timer = { id: 't1', kind: 'countdown', plan: [], started: '2026-11-06T17:00:00+01:00', paused: [] }
   old(M, [{ kind: 'timer', op: { op: 'stop', op_id: 's1', at: '2026-11-06T18:00:00+01:00' }, queuedAt: dayAgo(M) }])
@@ -148,7 +148,7 @@ await t.test('N1: "Try again" sends an op older than a day once, and the server 
   assert.deepStrictEqual(ops(M), [])
 })
 
-await t.test('N1: a refused old op is dropped with a toast after "Try again"', async () => {
+await t.test('a refused old op is dropped with a toast after "Try again"', async () => {
   const { M, toasts } = await fresh(file)
   old(M, [{ kind: 'timer', op: { op: 'stop', op_id: 's2', at: '2026-11-06T18:00:00+01:00' }, queuedAt: dayAgo(M) }])
   M.retryOutbox()
@@ -157,7 +157,7 @@ await t.test('N1: a refused old op is dropped with a toast after "Try again"', a
   assert.ok(toasts().some(m => /refused/.test(m) && /no timer is running/.test(m)), `toasts ${JSON.stringify(toasts())}`)
 })
 
-await t.test('N1: "Try again" sends an old op once: a 5xx makes it stuck by age again', async () => {
+await t.test('"Try again" sends an old op once: a 5xx makes it stuck by age again', async () => {
   const { M, server } = await fresh(file)
   old(M, [{ kind: 'timer', op: { op: 'start', kind: 'pomodoro', op_id: 's3', at: '2026-11-06T18:00:00+01:00' }, queuedAt: dayAgo(M) }])
   server.fail500 = true
@@ -172,7 +172,7 @@ await t.test('N1: "Try again" sends an old op once: a 5xx makes it stuck by age 
   assert.deepStrictEqual(ops(M), ['start'])
 })
 
-// --- N3: each kind replays from its own oldest op -----------------------------------------------
+// --- each kind replays from its own oldest op -----------------------------------------------
 
 const lockedTimelog = (M, server) => {
   const ctx = M.getCtx()
@@ -183,7 +183,7 @@ const lockedTimelog = (M, server) => {
   }
 }
 
-await t.test('N3: a stuck time-log op does not hold back the timer clicks queued behind it', async () => {
+await t.test('a stuck time-log op does not hold back the timer clicks queued behind it', async () => {
   const { M, server } = await fresh(file)
   lockedTimelog(M, server)
   old(M, [
@@ -198,7 +198,7 @@ await t.test('N3: a stuck time-log op does not hold back the timer clicks queued
   assert.strictEqual(M.outboxStatus().stuck.kind, 'timelog')
 })
 
-await t.test('N3: a 5xx on one kind does not stop the other kind in the same replay', async () => {
+await t.test('a 5xx on one kind does not stop the other kind in the same replay', async () => {
   const { M, server } = await fresh(file)
   lockedTimelog(M, server)
   old(M, [
@@ -210,7 +210,7 @@ await t.test('N3: a 5xx on one kind does not stop the other kind in the same rep
   assert.deepStrictEqual(M.readOutbox().map(i => `${i.kind}:${i.op.op}:${i.tries || 0}`), ['timelog:stop:1'])
 })
 
-await t.test('N3: a click waiting behind a stuck op of its kind gets a toast naming that op', async () => {
+await t.test('a click waiting behind a stuck op of its kind gets a toast naming that op', async () => {
   const { M, server, toasts } = await fresh(file)
   server.fail500 = true
   old(M, [{ kind: 'timer', op: { op: 'start', kind: 'pomodoro', op_id: 'k3', at: '2026-11-11T09:01:00+01:00' }, queuedAt: Date.now() - 50000, tries: 5, error: '500: database is locked' }])
@@ -221,7 +221,7 @@ await t.test('N3: a click waiting behind a stuck op of its kind gets a toast nam
   assert.strictEqual(named.length, 1, `toasts ${JSON.stringify(toasts())}`)
 })
 
-await t.test('N3: the chip shows, retries and discards the stuck op even when another kind is older', async () => {
+await t.test('the chip shows, retries and discards the stuck op even when another kind is older', async () => {
   const { M } = await fresh(file)
   old(M, [
     { kind: 'timer', op: { op: 'start', kind: 'countdown', minutes: 5, op_id: 'k4', at: '2026-11-11T09:00:00+01:00' }, queuedAt: Date.now() - 60000 },
@@ -244,7 +244,7 @@ await t.test('dedupe: one op_id is kept once in the outbox', async () => {
   assert.strictEqual(M.readOutbox().length, 1)
 })
 
-await t.test('X14: a refused timer click shows the server message and does not throw', async () => {
+await t.test('a refused timer click shows the server message and does not throw', async () => {
   const { M, toasts } = await fresh(file)
   let result
   try {
@@ -256,7 +256,7 @@ await t.test('X14: a refused timer click shows the server message and does not t
   assert.ok(toasts().some(m => /no timer is running/.test(m)), `toasts ${JSON.stringify(toasts())}`)
 })
 
-await t.test('X16: after a 2 h sleep the missed phase ends make one "while you were away" alert', async () => {
+await t.test('after a 2 h sleep the missed phase ends make one "while you were away" alert', async () => {
   const { M, toasts } = await fresh(file)
   const now = Date.now()
   const started = new Date(now - 2 * 3600000).toISOString()
@@ -270,7 +270,7 @@ await t.test('X16: after a 2 h sleep the missed phase ends make one "while you w
   assert.strictEqual(toasts().length, 1, 'the summary fired twice')
 })
 
-await t.test('X16: a phase end inside the tick window still alerts at once', async () => {
+await t.test('a phase end inside the tick window still alerts at once', async () => {
   const { M, toasts } = await fresh(file)
   const now = Date.now()
   M.$timer.set({ id: 'w2', kind: 'countdown', plan: [{ phase: 'countdown', minutes: 1 }], started: new Date(now - 62000).toISOString(), paused: [], label: 'tea' })
@@ -279,7 +279,7 @@ await t.test('X16: a phase end inside the tick window still alerts at once', asy
   assert.doesNotMatch(toasts()[0], /while you were away/i)
 })
 
-await t.test('X7: the hours label rounds the total minutes', async () => {
+await t.test('the hours label rounds the total minutes', async () => {
   const { M } = await fresh(file)
   assert.strictEqual(typeof M.hoursLabel, 'function', 'hoursLabel is not exported from timer.js')
   assert.strictEqual(M.hoursLabel(1.995), '2:00')

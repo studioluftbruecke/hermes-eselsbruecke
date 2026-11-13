@@ -3,7 +3,7 @@
   "label": "Eselsbrücke",
   "description": "Backend routes for the Eselsbrücke toolbox page: toolbox file, pad, timers, time log, engines",
   "icon": "Wrench",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "tab": {
     "path": "/eselsbruecke",
     "hidden": true

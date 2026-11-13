@@ -1,7 +1,7 @@
 /**
  * The Eselsbrücke sidebar row: started in register(), its "Sidebar" block drawn on the settings page.
  * The row itself is the shared module (sidebar-row.js, a byte-identical copy of the template; never
- * edit it here). Position 51, the first plugin row below Kanban (sidebar rows plan, D3).
+ * edit it here). Position 51, the first plugin row below Kanban (the studio's plugins share one order).
  */
 import { atom, Input, SIDEBAR_NAV_AREA, Switch, useValue } from '@hermes/plugin-sdk'
 import { jsx, jsxs } from 'react/jsx-runtime'

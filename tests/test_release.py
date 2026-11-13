@@ -1,9 +1,9 @@
-"""The release step (PR #73 review X19, X20) and the two-place install rule.
+"""The release step and the two-place install rule.
 
-- X19: every third-party component that ships in the plugin folder is named in
+- every third-party component that ships in the plugin folder is named in
   THIRD_PARTY_NOTICES.md with its version, copyright line and licence text; the README's Disclosures
   name the two data files and point to the notices; plugin.js points to them.
-- X20: the plugin imports no private Hermes core module except the two it cannot replace today
+- the plugin imports no private Hermes core module except the two it cannot replace today
   (`hermes_time`, `gateway.session_finite`), each guarded with a fallback; no Python helper that
   imports Hermes internals ships outside tests/.
 - AGENTS.md "Two-place install for a Desktop half": the README section "Install and update".
@@ -43,7 +43,6 @@ def _section(text: str, title: str) -> str:
     return match.group(1)
 
 
-# --- X19 -------------------------------------------------------------------------------------------
 
 def test_notices_name_every_bundled_package_with_version_copyright_and_licence_text():
     assert NOTICES.is_file(), "THIRD_PARTY_NOTICES.md is missing from the plugin folder"
@@ -83,11 +82,11 @@ def test_plugin_js_points_to_the_notices():
     assert "THIRD_PARTY_NOTICES.md" in first
 
 
-# --- X20 -------------------------------------------------------------------------------------------
 
 ACCEPTED_PRIVATE = {"hermes_time", "gateway.session_finite"}
 # Modules of Hermes' published plugin API (hermes_cli/data/plugin_api.json) the plugin uses.
-PUBLIC_USED = {"hermes_constants", "gateway.session_context", "gateway.config", "tools.registry", "agent.context_references"}
+PUBLIC_USED = {"hermes_constants", "hermes_cli.config", "gateway.session_context", "gateway.config", "tools.registry",
+               "agent.context_references"}
 HERMES_PACKAGES = {"hermes_time", "hermes_cli", "gateway", "tools", "agent", "hermes_state", "cron", "plugins"}
 
 
@@ -142,8 +141,8 @@ def test_data_namespace_matches_hermes_rule():
 
 def test_readme_install_and_update_covers_both_places():
     section = _section((ROOT / "README.md").read_text(encoding="utf-8"), "Install and update")
-    for needle in ("hermes -p <profile> plugins install https://github.com/studioluftbruecke/hermes-eselsbruecke --enable",
-                   "hermes plugins install https://github.com/studioluftbruecke/hermes-eselsbruecke",
+    for needle in ("hermes -p <profile> plugins install eselsbruecke --enable", "hermes plugins install eselsbruecke",
+                   "https://github.com/studioluftbruecke/hermes-eselsbruecke",
                    "hermes -p <profile> plugins update eselsbruecke", "hermes plugins update eselsbruecke",
                    "Rescan", "Agent in <profile>", "Force reinstall", "plugins list"):
         assert needle in section, f"'Install and update' lacks: {needle}"

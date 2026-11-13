@@ -8,7 +8,8 @@ SCHEMA = {
     "description": (
         "Text tools. action=diff {left, right} gives changed, added and removed lines with word changes and a "
         "unified diff; action=regex {pattern, text, flags?: i m s x} tests a Python `re` pattern (the user's "
-        "Regex tester page uses JavaScript RegExp, so name the flavour) and lists matches and groups; "
+        "Regex tester page uses JavaScript RegExp, so name the flavour) and lists up to 200 matches and groups "
+        "(clipped: true when long match text was cut); "
         "action=count {text} gives characters, words, lines, bytes and tokens_estimate, Hermes' own estimate "
         "(UTF-8 bytes / 4), labelled as an estimate; the exact o200k count is on the Token counter page."
     ),

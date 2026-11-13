@@ -1,6 +1,6 @@
 // Pomodoro and countdown phases in the Desktop: a pure function of the timer record (start, plan,
 // pauses) and the clock, the same rule as timers.py, so the chip counts and alerts without the
-// backend (constraint 10). tests/test_desktop_parity.mjs runs the fixtures' timer cases through it.
+// backend. tests/test_desktop_parity.mjs runs the fixtures' timer cases through it.
 
 export const PHASE_TITLES = { work: 'Work', short: 'Break', long: 'Long break', countdown: 'Countdown' }
 

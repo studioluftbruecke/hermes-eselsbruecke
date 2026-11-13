@@ -172,7 +172,7 @@ const CSS = `
 .esb .trow .d { font-size: 11.5px; color: var(--esb-muted); display: block; }
 .esb.settings, .esb .settings { display: grid; gap: 22px; max-width: 700px; align-content: start; }
 .esb.settings > .banner { margin-bottom: 0; }
-.esb.settings > [data-sidebar-section] { margin: 0 !important; }
+.esb.settings > section:not(.sec) { margin: 0 !important; } /* the shared sidebar-row block */
 .esb .sec { display: grid; gap: 8px; min-width: 0; }
 .esb .sec > h3 { font-size: 12.5px; margin: 0; }
 .esb .box { border: 1px solid var(--esb-line); border-radius: 10px; background: var(--esb-card); min-width: 0; }

@@ -1,6 +1,6 @@
 """The five engine tools through the agent path (dispatcher, switches) and the page path (/run/{engine}),
 the time in the user's world clock places, and the schema budget of every registered agent tool
-(constraint 20)."""
+(the tool texts every turn carries)."""
 import datetime as dt
 import json
 

@@ -1,0 +1,48 @@
+# Rebuilds desktop/plugin.js, data/o200k_base.json and THIRD_PARTY_NOTICES.md from desktop/src and the
+# pinned packages in desktop/build, and fails when any committed file differs from the rebuild, so a
+# reviewer can trust the generated files without rebuilding them by hand.
+name: bundle matches source
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      # The build checks the bundle with Desktop's runtime loader import scan (apps/desktop), taken
+      # from the Hermes commit the committed bundle was built against (0.23.1), so a later upstream
+      # change cannot turn this job red. Move the ref when the bundle is rebuilt on a newer Hermes.
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          repository: NousResearch/hermes-agent
+          ref: 3b421578588243f920886e6fe79a6faa87ea026e
+          path: hermes-agent
+          sparse-checkout: apps/desktop
+      - uses: actions/setup-node@60edb5dd545a775178f52524783378180af0d1f8 # v4.0.2
+        with:
+          node-version: 22
+      - name: Install the pinned build packages
+        working-directory: desktop/build
+        run: npm ci --ignore-scripts
+      - name: Rebuild into a temp folder
+        working-directory: desktop/build
+        env:
+          HERMES_SOURCE: ${{ github.workspace }}/hermes-agent
+        run: node build.mjs --out "$RUNNER_TEMP/rebuilt"
+      - name: Compare with the committed files
+        run: |
+          status=0
+          for pair in plugin.js:desktop/plugin.js o200k_base.json:data/o200k_base.json \
+                      THIRD_PARTY_NOTICES.md:THIRD_PARTY_NOTICES.md; do
+            built="$RUNNER_TEMP/rebuilt/${pair%%:*}"; committed="${pair#*:}"
+            echo "$(sha256sum "$built" | cut -c1-64)  rebuilt   ${pair%%:*}"
+            echo "$(sha256sum "$committed" | cut -c1-64)  committed $committed"
+            cmp -s "$built" "$committed" || { echo "::error file=$committed::differs from the rebuild"; status=1; }
+          done
+          exit $status

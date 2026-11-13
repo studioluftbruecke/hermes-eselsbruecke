@@ -1,4 +1,4 @@
-// The outbox (A16): a time-log or timer click that fails with a network error is kept in
+// The outbox: a time-log or timer click that fails with a network error is kept in
 // ctx.storage under `outbox:<profile>` (the profile at the click; ctx.storage is one store for the
 // whole app) with a UUID v7 op id and the click time, shown as "n not synced" on the chip, and
 // replayed in order through /timelog/ops and /timer when /health answers again while that profile
@@ -6,7 +6,7 @@
 //
 // Order is the rule, per kind: while the outbox holds ops of a kind, a new click of that kind is
 // queued behind them and the replay starts at once, so it cannot overtake them. Each kind replays from
-// its own oldest op, so a stuck time-log op never holds back a timer click (N3). Storage is the one
+// its own oldest op, so a stuck time-log op never holds back a timer click. Storage is the one
 // list: the replay reads it again before each op and removes what it sent by op_id, so a click queued
 // during a replay stays. The backend's answer decides an op's fate:
 //   - network error, or 404 (the plugin is not on): kept, the whole replay stops, nothing is counted
@@ -15,7 +15,7 @@
 //   - 2xx (applied or duplicate): dropped
 // An op that failed MAX_TRIES times or has waited longer than MAX_AGE_MS is stuck: the replay no
 // longer sends it or anything of its kind behind it, and the chip's popover shows it with "Try again"
-// and "Discard". "Try again" lets it go out once more whatever its age (N1): the server dedupes by
+// and "Discard". "Try again" lets it go out once more whatever its age: the server dedupes by
 // op_id and checks the click time, so a refusal drops it with a toast as usual.
 import { atom } from '@hermes/plugin-sdk'
 

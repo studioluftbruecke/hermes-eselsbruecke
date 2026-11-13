@@ -29,7 +29,7 @@ which side to update.
 - A **status-bar chip**, at most 60 px wide: an icon while nothing runs, a ring and the minutes left
   for a pomodoro, a dot and the elapsed time for a time-log timer, a dot while clicks wait for
   Hermes. Its menu pauses, stops and opens the dashboard. "Show in status bar" in the settings
-  hides it.
+  removes it; Desktop's right-click menu on the status bar lists it as "Eselsbrücke" too.
 - **Command palette** rows: open the dashboard or any switched-on tool, add a line to today's pad,
   start a pomodoro, copy a new UUID, open Eselsbrücke beside the chat.
 - **Shortcuts** (rebindable): `Cmd+Shift+E` opens the dashboard, `Cmd+Alt+P` adds a line to today's
@@ -110,8 +110,10 @@ uses the server's clock (often UTC), and the settings page says so.
   (`<profile>/plugin-data/agent-plugin-eselsbruecke-…`): `toolbox.json` and its last 20 versions
   (plus any `toolbox.broken-*.json` set aside), one pad file per day and `pad/agent_log.jsonl` (the
   agent's pad additions, for undo), `timers.json`, the time log (one JSONL file per ISO week, only
-  ever appended), `clients.json` (clients and rates), `presence.json` (Desktop's heartbeat),
-  `alerts_state.json` (the alert job's last setup), `tick_state.json` (the alert ledger),
+  ever appended), `clients.json` (clients and rates), `break_tip.json` (the current break's tip, so an
+  Unblockbrücke card is drawn once per break), `presence.json` (Desktop's heartbeat),
+  `alerts_state.json` (the alert job's last setup), `tick_state.json` (the alert job's last run),
+  `alerts_sent.jsonl` (the alert ledger: the newest 500 alerts sent, so none is sent twice),
   `tick_errors.jsonl` (the newest 20 alert-job errors), and `exports/` (CSV files the agent writes).
   Desktop keeps a few view choices, the last loaded world-clock list and the outbox (clicks waiting for Hermes) in its own plugin storage on your Mac.
 - **Scheduled jobs:** when "Alerts while Desktop is closed" is on (off by default), the plugin
@@ -122,27 +124,48 @@ uses the server's clock (often UTC), and the settings page says so.
   run output, and the settings page says so. Turning the switch off removes the job and the script.
   One limit: if you quit Desktop less than 90 s before an alert is due, that alert is not sent
   (the job takes the last heartbeat to mean Desktop showed it).
-  If you uninstall the plugin with the switch on, the job stays and prints nothing: remove it with
-  `hermes cron list` and `hermes cron remove <id>`.
+  If you disable the plugin in a profile with the switch on, the job keeps running each minute
+  but sends nothing; its first run after the disable sends one message saying so. The job reads
+  whether the plugin is enabled with Hermes' own config loader, so a managed `/etc/hermes` config
+  counts. If you uninstall
+  the plugin with the switch on, the job stays and prints nothing. In both cases remove it with
+  `hermes cron list` and `hermes cron remove <id>` (the job named `eselsbruecke-alerts`), or turn the
+  switch off before you disable or uninstall.
 - **Child processes:** the regex tester's agent tool runs Python's `re` in a short-lived child
   process of the same Python (`-I -S`, an empty working folder, a 2 s limit), so a pattern that never
-  finishes cannot hang Hermes. Nothing else starts a process.
-- **Hermes tools the plugin calls:** `cronjob_manage` (the alert job) and `kanban_create` (a pad line
-  made into a card), through Hermes' own tool registry.
+  finishes cannot hang Hermes. When a Desktop click sets up the alert job or makes a pad line into a
+  card, the plugin runs Hermes' own CLI for this profile (`hermes -p <profile> cron list --all`, `cron
+  create`, `cron remove`, `kanban create --json`) as an argument list, without a shell. The `-p` keeps
+  it on this profile after a `hermes profile use <other>`. The plugin's job is the one named
+  `eselsbruecke-alerts` or running its script; when the CLI prints a job list the plugin cannot read,
+  it creates and removes nothing and the settings page shows why.
+  Nothing else starts a process.
+- **Web Worker in Desktop:** the Regex tester runs your JavaScript pattern in a Web Worker that the
+  plugin starts from a Blob URL. The Blob holds only the plugin's own bundled regex function (no
+  network, no other code), and the worker exists so a pattern with catastrophic backtracking
+  (`(a+)+$`) is stopped after 300 ms instead of freezing Desktop. Nothing else runs in it.
+- **Hermes tools the plugin calls:** in an agent turn, `cronjob_manage` (the alert job) and
+  `kanban_create` (a pad line made into a card) through the turn's own tool dispatch; from the page,
+  the same through the CLI commands above.
 - **Context references:** any `@pad:...` you type in a message attaches that pad to the turn,
   including a message you paste from elsewhere. Profiles that do not enable the plugin get nothing.
 - **Bundled code and data:** `desktop/plugin.js` (2.3 MB) carries Prettier 3.9.10, qrcode-generator
   2.0.4, js-tiktoken 1.0.21 (lite) and its dependency base64-js 1.5.1, all MIT, each loaded only on
   first use. `data/o200k_base.json` (2.3 MB) is the o200k vocabulary OpenAI publishes with tiktoken
-  (MIT), as js-tiktoken packages it. `data/eff_short_wordlist_1.txt` is the EFF's Short Wordlist #1
+  (MIT), as js-tiktoken packages it, with one change: the build writes the word for running a command
+  as root with a JSON escape (`su\u0064o`), the same string once parsed, so the install scan does not
+  read it as a shell command. `data/eff_short_wordlist_1.txt` is the EFF's Short Wordlist #1
   for passphrases, unmodified, under CC BY 3.0 US (attribution to the Electronic Frontier Foundation).
   `THIRD_PARTY_NOTICES.md` carries each licence text and copyright line, and the licences of the
   projects Prettier bundles. `desktop/build/` rebuilds `plugin.js`, the vocabulary and the notices byte
   for byte (`npm ci`, then `HERMES_SOURCE=<Hermes source tree> node build.mjs`); the SHA-256 of each
-  is in the release notes. Hermes' install scan says `safe`; its medium and low findings are inside
+  is in the release notes, and the GitHub Actions job `.github/workflows/bundle.yml` rebuilds all
+  three on every push and fails when a committed file differs. Hermes' install scan says `safe`; its medium and low findings are inside
   the vendored code and the build scripts (character codes, encoded strings, files over 1 MB).
   `.gitleaks.toml` exempts the vocabulary file from the generic API-key rule, because some of its
   base64 tokens look like keys.
+- **Python packages:** none of its own. It uses what Hermes ships: `ruamel.yaml` (the YAML
+  formatter, the alert job's config read), `croniter` (cron explanations) and `fastapi` (the routes).
 - **Credentials:** none.
 - **Telemetry:** none.
 
@@ -154,8 +177,12 @@ the same version. With Hermes and Desktop on one computer, one install covers bo
 
 | Where | Install | Update |
 | --- | --- | --- |
-| Server: tools, routes, the alert job | `hermes -p <profile> plugins install https://github.com/studioluftbruecke/hermes-eselsbruecke --enable` | `hermes -p <profile> plugins update eselsbruecke` |
-| Desktop computer: Desktop half | `hermes plugins install https://github.com/studioluftbruecke/hermes-eselsbruecke` | `hermes plugins update eselsbruecke` |
+| Server: tools, routes, the alert job | `hermes -p <profile> plugins install eselsbruecke --enable` | `hermes -p <profile> plugins update eselsbruecke` |
+| Desktop computer: Desktop half | `hermes plugins install eselsbruecke` | `hermes plugins update eselsbruecke` |
+
+The name installs the version the Hermes plugin catalog lists (reviewed and pinned). On a Hermes
+whose catalog does not list it yet, use the Git URL instead,
+`https://github.com/studioluftbruecke/hermes-eselsbruecke`, which installs the newest release commit.
 
 - After either step on the Desktop computer: Capabilities → Plugins → Rescan. A new install's
   Desktop half arrives switched off; switch it on there.

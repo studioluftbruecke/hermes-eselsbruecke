@@ -84,6 +84,29 @@ def test_markdown_and_results(tmp_path, pad):
                                "- [ ] Call mom (reminder 18:30)"]
 
 
+def test_markdown_and_at_pad_name_why_a_calculation_has_no_answer_and_leave_notes_as_written(tmp_path, pad):
+    """A line the calculator reads but cannot answer gets its reason; a note that only ends in `=`
+    is exported as written, as 0.2.0 did. The page still shows both reasons."""
+    s = make_store(tmp_path)
+    now = dt.datetime(2026, 11, 9, 10, 0, tzinfo=BERLIN)
+    set_clock(now)
+    texts = ["Rent 1.234,56 + 1 =", "Meeting notes =", "1 / 0 =", "2 km + 3 kg =", "Hosting: 16,90 * 12 =",
+             "plain note"]
+    pad.add_lines(s, [{"text": t} for t in texts], "user")
+    day = pad.with_results(pad.load_day(s), True, now)
+    assert all(line.get("result_error") for line in day["lines"][:4])
+    md = pad.markdown(day).splitlines()
+    assert md == ["## Pad 2026-11-09",
+                  "- [ ] Rent 1.234,56 + 1 =",
+                  "- [ ] Meeting notes =",
+                  "- [ ] 1 / 0 = (no answer: division by zero)",
+                  "- [ ] 2 km + 3 kg = (no answer: these values have different units and cannot be added)",
+                  "- [ ] Hosting: 16,90 * 12 = (= 202,8)",
+                  "- [ ] plain note"]
+    attached = sub("reference").expand_text(s, "today", lambda: True, now)
+    assert "- [ ] Rent 1.234,56 + 1 =\n" in attached and "(no answer: division by zero)" in attached
+
+
 def test_line_limits_and_unknown_line(tmp_path, pad):
     s = make_store(tmp_path)
     with pytest.raises(pad.PadError):
@@ -128,12 +151,13 @@ def test_pad_routes(tmp_path):
         api.set_store_factory(None)
 
 
-POISON = ["Deadline: 2026-11-10 + 99999999 days =", "(" * 200 + "1" + ")" * 200 + " ="]
+POISON = ["Deadline: 2026-11-10 + 99999999 days =", "(" * 200 + "1" + ")" * 200 + " =", "0 ^ -1 =",
+          "Huge: (10^1000)^5 * 1 h ="]
 
 
 @pytest.mark.parametrize("text", POISON)
 def test_a_calculation_out_of_range_never_breaks_the_pad(tmp_path, pad, text):
-    """X2: the line is stored and shown with its error, today, after roll-over, and to the agent."""
+    """The line is stored and shown with its error, today, after roll-over, and to the agent."""
     api = sub("api")
     store = make_store(tmp_path)
     api.set_store_factory(lambda: store)
@@ -161,7 +185,7 @@ def test_a_calculation_out_of_range_never_breaks_the_pad(tmp_path, pad, text):
 
 
 def test_a_day_written_ahead_still_rolls_over_once(tmp_path, pad):
-    """X3a: a line added on the next day (the page's "Next day" button) must not cancel that day's roll-over."""
+    """A line added on the next day (the page's "Next day" button) must not cancel that day's roll-over."""
     api = sub("api")
     store = make_store(tmp_path)
     api.set_store_factory(lambda: store)
@@ -197,7 +221,7 @@ def test_a_merge_never_copies_a_line_id_twice(tmp_path, pad):
 
 
 def test_a_reminder_and_a_prompt_belong_to_their_lines_day(tmp_path, pad):
-    """X3b: a time without a date means the line's day, not today."""
+    """A time without a date means the line's day, not today."""
     s = make_store(tmp_path)
     set_clock(dt.datetime(2026, 11, 10, 9, 0, tzinfo=BERLIN))
     out = pad.add_lines(s, [{"text": "standup", "kind": "reminder", "remind_at": "09:30"},
@@ -213,7 +237,7 @@ def test_a_reminder_and_a_prompt_belong_to_their_lines_day(tmp_path, pad):
 
 
 def test_reminders_due_ignores_days_written_ahead(tmp_path, pad):
-    """X3c: future day files must not push today out of the window the tick reads."""
+    """Future day files must not push today out of the window the tick reads."""
     s = make_store(tmp_path)
     set_clock(dt.datetime(2026, 11, 10, 9, 0, tzinfo=BERLIN))
     pad.add_lines(s, [{"text": "Call mom", "kind": "reminder", "remind_at": "18:30"}], "user")
@@ -247,5 +271,34 @@ def test_card_line_action_uses_the_bridge_or_falls_back(tmp_path, monkeypatch):
         lid2 = body["day"]["lines"][1]["id"]
         status, body = api.pad_lines({"op": "card", "date": "2026-11-09", "id": lid2})
         assert status == 200 and body["card"] is None and body["fallback_draft"] == "Create a kanban card: Second"
+    finally:
+        api.set_store_factory(None)
+
+
+def test_a_stored_line_the_calculator_cannot_read_still_shows_the_pad(tmp_path, pad, monkeypatch):
+    """A line stored by an older version whose evaluation raises anything at all shows as an error;
+    the other lines, the markdown and @pad: still answer."""
+    api = sub("api")
+    calc = sub("engines.calc")
+    store = make_store(tmp_path)
+    api.set_store_factory(lambda: store)
+    clock = set_clock(dt.datetime(2026, 11, 10, 9, 0, tzinfo=BERLIN))
+    try:
+        api.pad_lines({"op": "add", "text": "2 * 3 ="})
+        api.pad_lines({"op": "add", "text": "broken ="})
+        real = calc.evaluate
+
+        def flaky(text, now=None):
+            if "broken" in text:
+                raise RecursionError("deep")
+            return real(text, now)
+
+        monkeypatch.setattr(calc, "evaluate", flaky)
+        status, body = api.pad_get()
+        assert status == 200
+        good, bad = body["day"]["lines"]
+        assert good["result"] == "6" and bad["result"] is None and bad["result_error"]
+        assert api.pad_markdown()[0] == 200
+        assert "2 * 3 =" in sub("reference").expand_text(store, "today", lambda: True, clock.when)
     finally:
         api.set_store_factory(None)

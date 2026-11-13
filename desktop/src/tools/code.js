@@ -1,6 +1,6 @@
 // Code tools. Formatter: JSON and YAML through the Python engine (the agent's output, byte for byte),
 // the other languages through Prettier in the Desktop; without the backend Prettier formats JSON and
-// YAML too, labelled "formatted in Desktop" (constraint 8, R16). Diff and cron need the backend.
+// YAML too, labelled "formatted in Desktop". Diff and cron need the backend.
 // Regex is JavaScript's RegExp; the agent's tool is Python's re, and the page says so.
 import { useEffect, useState } from 'react'
 import { jsx } from 'react/jsx-runtime'
@@ -52,7 +52,7 @@ export function FormatterTool() {
       setRes({ error: error.message })
     }
   }
-  // "Format clipboard" reads the clipboard once (Q3: if Desktop refuses, it says so and asks for a paste)
+  // "Format clipboard" reads the clipboard once (if Desktop refuses, it says so and asks for a paste)
   const fromClipboard = async () => {
     try {
       const clip = await navigator.clipboard.readText()
@@ -117,7 +117,7 @@ export function RegexTool() {
   const [pattern, setPattern] = useDraft(DRAFT.regexPattern, '')
   const [flags, setFlags] = useDraft(DRAFT.regexFlags, 'gi')
   const [text, setText] = useDraft(DRAFT.regexText, '')
-  // The pattern runs in a worker with a time limit (X13), 150 ms after the last key. The result keeps
+  // The pattern runs in a worker with a time limit, 150 ms after the last key. The result keeps
   // the text it was computed on, so the marks never point into a newer text.
   const input = useDebounced(JSON.stringify([pattern, flags, text]), 150)
   const [run, setRun] = useState({ res: null, text: '' })
@@ -161,8 +161,8 @@ export function RegexTool() {
 }
 
 // Tokens: the estimate at once; the exact o200k count needs the ranks (2.3 MB, GET /data/o200k) and
-// building the encoder blocks Desktop for about a second or more once per run (P13). Until this Mac
-// has measured a first count under 1 s, the exact count waits for a click (Q4, provisional).
+// building the encoder blocks Desktop for about a second or more once per run. Until this Mac
+// has measured a first count under 1 s, the exact count waits for a click.
 let encoder = null
 let encoderMs = null
 async function loadEncoder() {

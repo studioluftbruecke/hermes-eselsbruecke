@@ -50,7 +50,7 @@ DEFAULT_DASHBOARD = ("timezones", "pad", "pomodoro", "timelog", "generate", "col
                      "encode")
 DEFAULT_CLOCKS = (("UTC", "UTC"), ("America/New_York", "New York"), ("Asia/Tokyo", "Tokyo"))
 
-# Called after every save with (old_doc, new_doc); M4's alert reconcile registers here.
+# Called after every save with (old_doc, new_doc); the alert job's reconcile registers here.
 AFTER_SAVE: list[Callable[[Store, dict, dict], None]] = []
 
 

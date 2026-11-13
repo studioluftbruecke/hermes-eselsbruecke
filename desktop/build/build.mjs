@@ -1,11 +1,11 @@
-// Build the Desktop half (PLAN constraint 9): bundle desktop/src/index.js with the pinned packages into
+// Build the Desktop half: bundle desktop/src/index.js with the pinned packages into
 // desktop/plugin.js, write the o200k ranks to data/o200k_base.json and the licences of everything bundled
-// to THIRD_PARTY_NOTICES.md (X19), apply the three literal rewrites on the output (P4, P12), then check
+// to THIRD_PARTY_NOTICES.md, apply the three literal rewrites on the output, then check
 // what can be checked in node:
-//   - the runtime loader's import scan, lifted from the installed Desktop source (P11 method): Hermes'
-//     source tree comes from HERMES_SOURCE, and a missing runtime-loader.ts fails the build (X20);
+//   - the runtime loader's import scan, lifted from the installed Desktop source: Hermes'
+//     source tree comes from HERMES_SOURCE, and a missing runtime-loader.ts fails the build;
 //   - the 16 MB plugin.js cap (apps/desktop/electron/main.ts PLUGIN_SOURCE_MAX_BYTES);
-//   - module evaluation CPU (budget 100 ms on the ARM build box, constraint 20), with stand-ins for the SDK and
+//   - module evaluation CPU (budget 100 ms on the ARM build box), with stand-ins for the SDK and
 //     React, string code generation disabled as in the renderer.
 // Hermes' admission lint and install scan are Python; tests/test_desktop_build.py runs them.
 //
@@ -36,7 +36,7 @@ const checkOnly = process.argv.includes('--check-only')
 const MAX_BYTES = 16 * 1024 * 1024
 const EVAL_BUDGET_MS = 100
 
-// Every package esbuild puts into plugin.js (X19), with where its licence text comes from: the package's
+// Every package esbuild puts into plugin.js, with where its licence text comes from: the package's
 // own file in node_modules, or desktop/build/licenses/ for the two packages that ship none.
 const pkgJson = name => JSON.parse(fs.readFileSync(path.join(here, 'node_modules', name, 'package.json'), 'utf8'))
 const BUNDLED = [
@@ -109,8 +109,8 @@ async function build() {
   })
   let src = fs.readFileSync(outfile, 'utf8')
   const rewrites = { importLiteral: src.split('`import()`').length - 1, scriptTag: (src.match(/<script/g) || []).length, sudoWord: (src.match(/\bsudo\b/gi) || []).length }
-  // P1: the admission lint reads a literal `import()` in a message as a dynamic import; P11 the same for
-  // "<script"; P12: the install scan reads the bare word "sudo" as privilege escalation (a base64
+  // The admission lint reads a literal `import()` in a message as a dynamic import, and the same for
+  // "<script"; the install scan reads the bare word "sudo" as privilege escalation (a base64
   // vocabulary entry in a bundled table). Each escape is the same string at run time.
   src = src.split('`import()`').join('`import\\u0028)`').replace(/<script/g, '\\u003cscript')
   src = sudoEscape(src)
@@ -127,7 +127,7 @@ async function build() {
 
 async function loaderScan(src) {
   const esbuild = require('esbuild')
-  // X20: the scan used to count as passed when the loader was missing. Now the path comes from
+  // The scan used to count as passed when the loader was missing. Now the path comes from
   // HERMES_SOURCE, and a missing variable or file fails the build with the reason.
   const source = process.env.HERMES_SOURCE
   if (!source) return { ok: false, error: 'HERMES_SOURCE is not set: point it at Hermes\' source tree (the folder with apps/desktop/) so the runtime loader\'s import scan can run' }

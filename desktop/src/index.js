@@ -5,12 +5,11 @@
  * shortcuts, "open beside chat", Desktop alerts, and the outbox. Source of desktop/plugin.js, built by desktop/build/build.mjs.
  *
  * Nothing heavy runs when this module is evaluated (Desktop evaluates every plugin.js at start, even
- * switched off; constraint 9): the vendored packages load on first use (vendor.js).
+ * switched off): the vendored packages load on first use (vendor.js).
  */
-import { host, KEYBINDS_AREA, PALETTE_AREA, ROUTES_AREA, STATUSBAR_AREAS } from '@hermes/plugin-sdk'
+import { host, KEYBINDS_AREA, PALETTE_AREA, ROUTES_AREA } from '@hermes/plugin-sdk'
 import { jsx } from 'react/jsx-runtime'
 
-import { Chip } from './chip.js'
 import { getCtx, ID, log, PATH, rest, setCtx, storage, uuid4, VERSION } from './core.js'
 import { startLive, timerAction } from './live.js'
 import { refreshOutbox } from './outbox.js'
@@ -18,6 +17,7 @@ import { openSettings, ToolboxPage } from './page.js'
 import { reconcileOnOpen, SettingsPage } from './settings.js'
 import { startRow } from './sidebar.js'
 import { DASHBOARD, openTool, setOpenBeside } from './ui.js'
+import { chipShown, startVisibility, stopVisibility } from './visibility.js'
 
 let closeBeside = null
 let disposing = false
@@ -67,7 +67,7 @@ function closeBesideOnDispose() {
   }
 }
 
-// Palette rows cannot read the query (constraint 13): one row per switched-on tool, plus fixed actions.
+// Palette rows cannot read the query: one row per switched-on tool, plus fixed actions.
 let paletteDisposers = []
 async function registerPalette(ctx) {
   let all = []
@@ -93,11 +93,14 @@ export default {
   register(ctx) {
     setCtx(ctx)
     setOpenBeside(openBeside)
-    if (typeof ctx.onDispose === 'function') ctx.onDispose(closeBesideOnDispose)
+    if (typeof ctx.onDispose === 'function') {
+      ctx.onDispose(closeBesideOnDispose)
+      ctx.onDispose(stopVisibility)
+    }
     refreshOutbox()
     ctx.register({ id: 'page', area: ROUTES_AREA, data: { path: PATH }, render: () => jsx(ToolboxPage, { onBeside: openBeside, onSettings: openSettings }) })
     const row = startRow(ctx)
-    ctx.register({ id: 'chip', area: STATUSBAR_AREAS.right, render: () => jsx(Chip, { onBeside: openBeside }) })
+    startVisibility(ctx, openBeside)
     ctx.register({ id: 'open', area: KEYBINDS_AREA, data: { id: `${ID}.open`, label: 'Eselsbrücke: open the dashboard', defaults: ['mod+shift+e'], run: () => openTool(DASHBOARD) } })
     // registered here and not with the tool rows, so it is in the palette before the toolbox has loaded
     ctx.register({ id: 'palette-dashboard', area: PALETTE_AREA, data: { id: `${ID}.dashboard`, label: 'Eselsbrücke: open the dashboard', action: `${ID}.open`, run: () => openTool(DASHBOARD) } })
@@ -111,6 +114,6 @@ export default {
     if (typeof ctx.setInterval === 'function') ctx.setInterval(() => registerPalette(ctx), 300000)
     startLive(ctx)
     reconcileOnOpen()
-    log(`${VERSION}: registered page, sidebar row (${row.prefs().show ? `position ${row.prefs().position}` : 'hidden'}), settings page, chip, palette, keybinds mod+shift+e (open the dashboard) and mod+alt+p (add to today's pad)`)
+    log(`${VERSION}: registered page, sidebar row (${row.prefs().show ? `position ${row.prefs().position}` : 'hidden'}), settings page, status-bar chip (${chipShown() ? 'shown' : 'hidden'}), palette, keybinds mod+shift+e (open the dashboard) and mod+alt+p (add to today's pad)`)
   },
 }
