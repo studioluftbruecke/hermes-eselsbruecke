@@ -44,12 +44,14 @@ def _num(x: float) -> str:
 def place(name: str) -> tuple[str, Optional[str]]:
     """The tz name behind what was typed, and the city's label when it was a city.
 
-    A name the tz database knows is taken as it is, so a zone name answers exactly as it always did;
-    anything else is looked up as a city."""
+    A zone in the bundled list answers with the list's spelling. A zone missing from that list keeps its typed
+    spelling, so a newer tz database still works; anything else is looked up as a city."""
     text = str(name).strip()
+    hit = places.resolve(text)
+    if hit and hit["zone"].lower() == text.lower() and places.zone_loads(hit["zone"]):
+        return hit["zone"], None
     if places.zone_loads(text):
         return text, None
-    hit = places.resolve(text)
     if hit and places.zone_loads(hit["zone"]):
         return hit["zone"], (hit["label"] if hit["zone"] != "UTC" else None)
     raise ConvertError(f"unknown place or time zone {name!r} (use a city like Tokyo or a zone like Europe/Berlin)")

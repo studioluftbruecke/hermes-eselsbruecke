@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.2
+
+- Time-zone conversion returns the canonical spelling of a known zone on case-insensitive hosts,
+  including `UTC` for `utc` and `Europe/Berlin` for `europe/berlin`. Unlisted zones still work.
+- Toolbox previews now follow the same unattended-write boundary as applies and restores. A cron or
+  one-shot run refuses before creating the preview file.
+
 ## 0.2.1
 
 A review round on security and correctness before the catalog's next review. Update both halves: the plugin where Hermes runs and the one Hermes Desktop loads.

@@ -238,6 +238,7 @@ TOOLBOX_WRITES = [
     ("set_pin", {"tool": "regex", "on": True}),
     ("set_pin", {"tool": "pad", "on": False}),
     ("restore", {"version": 1}),
+    ("preview", {"changes": {"dashboard": ["pad"]}}),
 ]
 
 
@@ -254,11 +255,52 @@ def test_agent_toolbox_writes_are_refused_unattended_and_change_nothing(tmp_path
     out = ctx.call("eselsbruecke_toolbox", action=action, **args)
     assert out["ok"] is False and out["error"] == "unattended" and "Nothing was changed" in out["message"]
     assert (store.root / "toolbox.json").read_text(encoding="utf-8") == before
+    assert not (store.root / "toolbox.preview.json").exists()
     assert [v["n"] for v in sub("toolbox").versions(store)] == [1]
     listed = ctx.call("eselsbruecke_toolbox", action="list")
     assert listed["ok"] is True and len(listed["clocks"]) == 3 and "regex" not in listed["dashboard"]
     assert ctx.call("eselsbruecke_toolbox", action="versions")["ok"] is True
-    assert ctx.call("eselsbruecke_toolbox", action="preview", changes={"dashboard": ["pad"]})["ok"] is True
+
+
+def test_cron_preview_refuses_before_creating_a_file(tmp_path):
+    data = tmp_path / "data"
+    ctx = Surface(data, "cli", cron=object())
+    load_plugin().register(ctx)
+    out = ctx.call("eselsbruecke_toolbox", action="preview", changes={"dashboard": ["pad"]})
+    assert out["ok"] is False and out["error"] == "unattended" and "scheduled job" in out["message"]
+    assert not (data / "toolbox.preview.json").exists()
+
+
+def test_cron_preview_leaves_existing_toolbox_state_unchanged(tmp_path):
+    store = sub("store").Store(tmp_path / "data")
+    toolbox = sub("toolbox")
+    toolbox.set_switch(store, "diff", False, "user")
+    toolbox.preview(store, {"dashboard": ["pad"]}, "user")
+    before = {str(path.relative_to(store.root)): path.read_bytes()
+              for path in store.root.rglob("*") if path.is_file()}
+    ctx = Surface(store.root, "cli", cron=object())
+    load_plugin().register(ctx)
+
+    out = ctx.call("eselsbruecke_toolbox", action="preview", changes={"modules": {"qr": {"on": False}}})
+
+    assert out["ok"] is False and out["error"] == "unattended"
+    after = {str(path.relative_to(store.root)): path.read_bytes()
+             for path in store.root.rglob("*") if path.is_file()}
+    assert after == before
+
+
+def test_interactive_toolbox_preview_and_apply_still_work(tmp_path):
+    data = tmp_path / "data"
+    ctx = Surface(data, "desktop")
+    load_plugin().register(ctx)
+    preview = ctx.call("eselsbruecke_toolbox", action="preview", changes={"modules": {"qr": {"on": False}}})
+    assert preview["ok"] is True and (data / "toolbox.preview.json").exists()
+
+    applied = ctx.call("eselsbruecke_toolbox", action="apply", preview_id=preview["preview_id"])
+
+    assert applied["ok"] is True and applied["version"] == 1
+    assert sub("toolbox").is_on(sub("store").Store(data), "qr") is False
+    assert not (data / "toolbox.preview.json").exists()
 
 
 @pytest.mark.parametrize("action,args", TOOLBOX_WRITES[1:5], ids=["add-place", "remove-place", "pin", "unpin"])

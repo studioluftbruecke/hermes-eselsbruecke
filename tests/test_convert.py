@@ -1,6 +1,7 @@
 """Conversions: known reference values (not only the generated fixture), the parity fixture, cron."""
 import datetime as dt
 import json
+from zoneinfo import ZoneInfoNotFoundError, available_timezones
 
 import pytest
 
@@ -12,6 +13,28 @@ PARITY = json.loads((ROOT / "tests" / "fixtures" / "parity.json").read_text(enco
 @pytest.fixture
 def conv():
     return sub("engines.convert")
+
+
+@pytest.fixture
+def case_insensitive_zones(conv, monkeypatch):
+    places = sub("engines.places")
+    real_zone_info = conv.ZoneInfo
+    names = {name.lower(): name for name in available_timezones()}
+
+    def host_zone(name):
+        text = str(name)
+        return real_zone_info(names.get(text.lower(), text))
+
+    def host_zone_loads(name):
+        try:
+            host_zone(name)
+        except (ZoneInfoNotFoundError, ValueError, OSError):
+            return False
+        return True
+
+    monkeypatch.setattr(places, "zone_loads", host_zone_loads)
+    monkeypatch.setattr(conv, "ZoneInfo", host_zone)
+    return places
 
 
 def test_reference_colours(conv):
@@ -62,6 +85,25 @@ def test_time_zones_and_dst(conv):
     assert conv.convert_time("14:30", "Europe/Berlin", ["UTC"], now)["to"][0]["time"] == "2026-11-09 13:30"
     with pytest.raises(conv.ConvertError):
         conv.convert_time("now", "Mars/Olympus", ["UTC"])
+
+
+@pytest.mark.parametrize("typed,canonical", [
+    ("utc", "UTC"),
+    ("UTC", "UTC"),
+    ("europe/berlin", "Europe/Berlin"),
+    ("eUrOpE/bErLiN", "Europe/Berlin"),
+])
+def test_known_zones_answer_with_canonical_spelling_on_case_insensitive_hosts(
+        conv, case_insensitive_zones, typed, canonical):
+    out = conv.convert_time("2026-11-09 10:00", typed, ["UTC"])
+    assert out["from"]["zone"] == canonical
+
+
+def test_a_zone_missing_from_the_bundled_list_still_works(conv, case_insensitive_zones):
+    unlisted = next(name for name in sorted(available_timezones())
+                    if case_insensitive_zones.resolve(name) is None and name.lower() != name)
+    out = conv.convert_time("2026-11-09 10:00", unlisted, ["UTC"])
+    assert out["from"]["zone"] == unlisted
 
 
 def test_a_city_names_its_zone_and_the_row_says_which_place(conv):

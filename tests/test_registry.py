@@ -40,7 +40,7 @@ def test_the_toolbox_tool_has_no_preset_and_guards_its_writes():
     spec = sub("registry").TOOLS["eselsbruecke_toolbox"]
     assert list(spec["actions"]) == ["list", "set_switch", "set_clock", "set_pin", "preview", "apply", "versions",
                                      "restore"]
-    assert set(spec["actions"]) - spec["writes"] == {"list", "preview", "versions"}
+    assert set(spec["actions"]) - spec["writes"] == {"list", "versions"}
 
 
 def test_every_action_maps_to_one_known_module():

@@ -12,7 +12,7 @@ import { fileURLToPath, pathToFileURL } from 'url'
 const here = path.dirname(fileURLToPath(import.meta.url))
 export const SRC = path.resolve(here, '..', 'desktop', 'src')
 // The version the bundle under test carries (core.js VERSION); the fake /health answers `server.version`.
-export const HARNESS_VERSION = '0.2.1'
+export const HARNESS_VERSION = '0.2.2'
 
 const SDK = `
 const listeners = new Map()

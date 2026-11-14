@@ -73,7 +73,7 @@ TOOLS: dict[str, dict] = {
     "eselsbruecke_toolbox": {"module": "toolbox",
                              "actions": {a: None for a in ("list", "set_switch", "set_clock", "set_pin",
                                                            "preview", "apply", "versions", "restore")},
-                             "writes": {"set_switch", "set_clock", "set_pin", "apply", "restore"}},
+                             "writes": {"set_switch", "set_clock", "set_pin", "preview", "apply", "restore"}},
     "eselsbruecke_pad": {"module": "pad", "actions": {"add": "pad", "undo": "pad"},
                          "writes": {"add", "undo"}},
     "eselsbruecke_timer": {"module": "timer",

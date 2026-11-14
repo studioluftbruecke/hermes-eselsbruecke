@@ -63,7 +63,7 @@ const page = (M, props = {}) => draw({ type: M.page.ToolboxPage, props }, new Se
 
 await t.test('the bundle under test carries the harness version', async () => {
   const { M } = await fresh(file)
-  assert.strictEqual(M.VERSION, '0.2.1')
+  assert.strictEqual(M.VERSION, '0.2.2')
 })
 
 await t.test('landing: the sidebar row and the "open" keybind give the dashboard', async () => {
@@ -485,17 +485,17 @@ await t.test('welcome: every tool with its blurb and a switch while first_run, "
 
 await t.test('version mismatch: one sentence that names both versions and the side to update', async () => {
   const { M } = await fresh(file)
-  assert.strictEqual(M.versionNote('0.2.1'), null, 'the same version is a mismatch')
-  assert.strictEqual(M.versionNote('0.3.0'), 'Eselsbrücke is 0.2.1 on this computer and 0.3.0 on your Hermes server. Update Eselsbrücke on this computer.')
-  assert.strictEqual(M.versionNote('0.1.1'), 'Eselsbrücke is 0.2.1 on this computer and 0.1.1 on your Hermes server. Update Eselsbrücke on your Hermes server.')
+  assert.strictEqual(M.versionNote('0.2.2'), null, 'the same version is a mismatch')
+  assert.strictEqual(M.versionNote('0.3.0'), 'Eselsbrücke is 0.2.2 on this computer and 0.3.0 on your Hermes server. Update Eselsbrücke on this computer.')
+  assert.strictEqual(M.versionNote('0.1.1'), 'Eselsbrücke is 0.2.2 on this computer and 0.1.1 on your Hermes server. Update Eselsbrücke on your Hermes server.')
   assert.match(M.versionNote('0.10.0', '0.9.2'), /Update Eselsbrücke on this computer\.$/, '0.10 was read as older than 0.9')
   assert.strictEqual(M.versionNote('0.3.0', 'dev'), null, 'a development bundle complains')
   assert.strictEqual(M.versionNote(undefined), null, 'no answer from /health is a mismatch')
   // the settings page shows it
   const S = M.settings
   const tree = draw({ type: S.SettingsView, props: { data: answer(), health: { version: '0.1.1' }, save: async () => ({}) } })
-  assert.match(text(tree), /0\.2\.1 on this computer and 0\.1\.1 on your Hermes server/)
-  assert.doesNotMatch(text(draw({ type: S.SettingsView, props: { data: answer(), health: { version: '0.2.1' }, save: async () => ({}) } })), /on your Hermes server\./)
+  assert.match(text(tree), /0\.2\.2 on this computer and 0\.1\.1 on your Hermes server/)
+  assert.doesNotMatch(text(draw({ type: S.SettingsView, props: { data: answer(), health: { version: '0.2.2' }, save: async () => ({}) } })), /on your Hermes server\./)
 })
 
 await t.test('settings: sections with the tools by group, the status bar switch and its saves, no presets, no tool id in sight', async () => {
@@ -515,7 +515,7 @@ await t.test('settings: sections with the tools by group, the status bar switch 
   assert.deepStrictEqual(S.rhythmSave(data, 'custom').toolbox.pomodoro, { rhythm: 'custom', work: 25, short: 5, long: 15, cycles: 4 })
 
   const saved = []
-  const tree = draw({ type: S.SettingsView, props: { data, health: { version: '0.2.1', time_zone: { zone: 'Europe/Berlin', offset: '+0100' } }, save: async b => { saved.push(b); return {} } } })
+  const tree = draw({ type: S.SettingsView, props: { data, health: { version: '0.2.2', time_zone: { zone: 'Europe/Berlin', offset: '+0100' } }, save: async b => { saved.push(b); return {} } } })
   assert.ok(String(tree.props.className).split(' ').includes('settings'), 'the page root is not the spaced grid')
   const titles = byClass(tree, 'sec').map(s => text(nodes(s).find(n => n.type === 'h3')))
   assert.deepStrictEqual(titles, ['Status bar', 'Daily tools', 'Code tools', 'Convert tools', 'Design tools', 'For the pad and the agent', 'Pomodoro', 'Alerts', 'Time zone', 'History'])

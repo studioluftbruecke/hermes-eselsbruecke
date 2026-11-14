@@ -8,7 +8,7 @@ its arithmetic, conversions and formatting come out exact instead of guessed.
 
 "Eselsbrücke" is the German word for a memory aid: a little bridge that gets you across.
 
-Version 0.2.0. Needs Hermes 0.23 or later, and Hermes Desktop 0.23 or later for the Desktop half
+Version 0.2.2. Needs Hermes 0.23 or later, and Hermes Desktop 0.23 or later for the Desktop half
 (older Desktop builds read at most 512 KiB of a plugin file).
 
 Coming from 0.1: update the plugin where your Hermes backend runs and on the computer with Hermes
@@ -84,7 +84,8 @@ When something goes wrong:
   characters, so a tiny file cannot become megabytes of JSON.
 
 In scheduled jobs and one-shot runs (`hermes chat -q`), where nobody is at the keyboard, the agent's
-writes to the pad, the timer and the time log are refused; read-only actions work.
+writes to the pad, the timer, the time log and the toolbox are refused. This includes toolbox previews,
+which save a preview file for a later apply. Read-only actions work.
 
 ## Settings
 

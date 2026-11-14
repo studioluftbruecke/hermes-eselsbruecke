@@ -1,5 +1,5 @@
 name: eselsbruecke
-version: "0.2.1"
+version: "0.2.2"
 description: "Eselsbrücke: a helper toolbox for Hermes with a today pad, a pomodoro, a billable time log and small tools you switch on and off. Your agent uses the same tools for exact answers."
 author: "Studio Luftbrücke"
 license: MIT

@@ -30,7 +30,7 @@ const expand = n => (n == null || typeof n !== 'object' ? n : Array.isArray(n) ?
 
 await t.test('the bundle under test carries the harness version', async () => {
   const { M } = await fresh(file)
-  assert.strictEqual(M.VERSION, '0.2.1')
+  assert.strictEqual(M.VERSION, '0.2.2')
 })
 
 await t.test('world clock: adding a place appends it, and the save body is the whole document with the new list', async () => {
